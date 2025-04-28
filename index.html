@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Graph Choice Task</title>
+    <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
+    <script defer src="task.js"></script>
+    <style>
+        .graph-box {
+            width: 700px;
+            height: 700px;
+            border: 1px solid #ccc;
+            background-color: white;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f7f7f7;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            margin: 0;
+            padding: 40px;         
+            font-size: 18px;      
+            zoom: 1.1;               
+        }
+        
+        input, button {
+            font-size: 1em;
+            padding: 5px 10px;
+        }
+        #graph-container {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+        #instructionsText {
+            margin-top: 20px;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+        #warning {
+            color: red;
+            font-weight: bold;
+            margin-top: 10px;
+        } 
+    </style>
+</head>
+<body>
+    <div id="instruction">
+        <h2 style="text-align: center;">Welcome to the experiment</h2>
+        <p style="text-align: center;">Please enter your ID to begin.</p>
+        <input type="text" id="participantId"  placeholder="Your ID" />
+        <br><br>
+        <button onclick="startTask()">Start</button>
+    </div>
+
+    <div id="task" style="display:none;">
+        <h2 style="text-align: center;">Graph Comparison Task</h2>
+        <p id="instructionsText" style="text-align: center;"></p>
+        <div id="graph-container">
+            <div class="graph-box" id="graph-left"></div>
+            <div class="graph-box" id="graph-right"></div>
+        </div>
+        <div id="warning" style="display:none;text-align: center;">⚠️ You're responding too fast! Please respond attentively.</div>
+    </div>
+
+    <div id="thanks" style="display:none;">
+        <h2>Thank you for participating!</h2>
+        <p>Your responses have been recorded.</p>
+    </div>
+</body>
+<script>
+    window.onload = async function() {
+    await loadGraphsFromCSV();
+    generateUniquePairs();
+
+    // Now you can access:
+    // - aGraphs[i], bGraphs[i]
+    // - pairs[i] = [i, j]
+    // - pairMetadata[i] = { blockA, blockB, nodeCountA, nodeCountB }
+};
+</script>
+</html>
