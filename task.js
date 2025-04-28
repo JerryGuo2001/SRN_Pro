@@ -6,30 +6,44 @@ let pairs = [];
 let pairMetadata = [];
 
 async function loadGraphsFromJSON() {
+    // Clear old data
+    aGraphs = [];
+    bGraphs = [];
+    graphMetadata = [];
+
+    // Pull fresh from server
     const response = await fetch('Block_Graph.json');
     const jsonData = await response.json();
 
-    const seen = new Set();
-
+    // Step 1: Group graphs by block_id and node_count
+    const grouped = {};
     for (const row of jsonData) {
         const key = `${row.block_id}_${row.node_count}`;
-        if (!seen.has(key)) {
-            seen.add(key);
-
-            const structure = row.graph_structure
-                .replace('[', '')
-                .replace(']', '')
-                .split(',')
-                .map(n => parseInt(n.trim(), 10));
-            aGraphs.push(structure);
-            bGraphs.push(structure);
-            graphMetadata.push({
-                block_id: row.block_id,
-                node_count: row.node_count,
-                pc_one: row.pc_one,
-                pc_two: row.pc_two,
-            });
+        if (!grouped[key]) {
+            grouped[key] = [];
         }
+        grouped[key].push(row);
+    }
+
+    // Step 2: For each group, pick 1 random graph
+    for (const key in grouped) {
+        const graphs = grouped[key];
+        const randomGraph = graphs[Math.floor(Math.random() * graphs.length)]; // randomly select 1
+
+        const structure = randomGraph.graph_structure
+            .replace('[', '')
+            .replace(']', '')
+            .split(',')
+            .map(n => parseInt(n.trim(), 10));
+
+        aGraphs.push(structure);
+        bGraphs.push(structure);
+        graphMetadata.push({
+            block_id: randomGraph.block_id,
+            node_count: randomGraph.node_count,
+            pc_one: randomGraph.pc_one,
+            pc_two: randomGraph.pc_two,
+        });
     }
 }
 
