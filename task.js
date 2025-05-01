@@ -161,7 +161,7 @@ function runTrial() {
         drawGraph(graphA, "graph-left");
         drawGraph(graphB, "graph-right");
     
-        instructionsEl.innerHTML = 'Press <strong>F</strong> if you prefer the <strong>left</strong> graph, <strong>J</strong> for the <strong>right</strong> graph.';
+        instructionsEl.innerHTML = 'With your gut feelings, which one looks more like a social network to you?<br>Press <strong>F</strong> if you prefer the <strong>left</strong> graph, <strong>J</strong> for the <strong>right</strong> graph.';
         instructionsEl.style.color = 'black';
     }    
     document.getElementById("warning").style.display = "none";
