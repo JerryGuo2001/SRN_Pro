@@ -1,6 +1,8 @@
 let aGraphs = [];
 let bGraphs = [];
 let graphMetadata = [];
+let inBreak = false;
+let breakStartTime = null;
 
 let pairs = [];
 let pairMetadata = [];
@@ -102,8 +104,17 @@ let fastCount = 0;
 let trialData = [];
 let id = "";
 
-let totalGraphTrials = 435;  // Number of graph comparison trials
-let totalProbeTrials = 20;
+let debugmode=true
+
+let totalGraphTrials, totalProbeTrials;
+if (debugmode){
+    totalGraphTrials = 20; 
+    totalProbeTrials = 20;
+}else{
+    totalGraphTrials = 465;
+    totalProbeTrials = 20;
+}
+
 let totaltrial = totalGraphTrials + totalProbeTrials;
 
 let trialSequence = Array.from({ length: totaltrial }, (_, i) => ({
@@ -132,18 +143,74 @@ function startTask() {
     runTrial();
 }
 
-// Function to run each trial
+//break screen
+function showBreakScreen() {
+    inBreak = true;
+    breakStartTime = performance.now();
+
+    document.getElementById("task").style.display = "none";
+    document.getElementById("breakScreen").style.display = "block";
+
+    let timeLeft = 2;
+    const countdownDisplay = document.getElementById("breakCountdown");
+    const earlyResumeMsg = document.getElementById("earlyResumeMessage");
+
+    earlyResumeMsg.style.display = "none"; // ✅ Hide it at the beginning of every break
+    countdownDisplay.textContent = timeLeft;
+
+    const interval = setInterval(() => {
+        timeLeft--;
+        countdownDisplay.textContent = timeLeft;
+
+        if (timeLeft <= 40) {
+            earlyResumeMsg.style.display = "block";
+        }
+
+        if (timeLeft <= 0) {
+            clearInterval(interval);
+            endBreak();
+        }
+    }, 1000);
+
+    const breakKeyListener = (e) => {
+        if (e.key === 'p' && (performance.now() - breakStartTime) > 20000) {
+            clearInterval(interval);
+            endBreak();
+        }
+    };
+
+    document.addEventListener("keydown", breakKeyListener);
+
+    function endBreak() {
+        inBreak = false;
+        document.removeEventListener("keydown", breakKeyListener);
+        document.getElementById("breakScreen").style.display = "none";
+        document.getElementById("task").style.display = "block";
+        runTrial();
+    }
+}
+
+
+//break time over
 function runTrial() {
+    const quarter = Math.floor(totaltrial / 4);
+    if (currentIndex === quarter || currentIndex === quarter * 2 || currentIndex === quarter * 3) {
+        currentIndex++; // advance so break isn't re-triggered
+        showBreakScreen();
+        return;
+    }
+
     if (currentIndex >= totaltrial) {
         document.getElementById("task").style.display = "none";
         document.getElementById("thanks").style.display = "block";
         saveCSV();
         return;
     }
+
     const trial = trialSequence[currentIndex];
     console.log(trial)
     const instructionsEl = document.getElementById("instructionsText");
-    
+
     if (trial.type === "probe") {
         instructionsEl.innerHTML = 'Press <strong>P</strong> button.';
         instructionsEl.style.color = 'red';
@@ -152,32 +219,32 @@ function runTrial() {
         const graphB = bGraphs[Math.floor(Math.random() * 30)];
         drawGraph(graphA, "graph-left");
         drawGraph(graphB, "graph-right");
-    
+
     } else {
         const pair = pairs[graphIndex];
         const graphA = aGraphs[pair[0]];
         const graphB = bGraphs[pair[1]];
-    
+
         drawGraph(graphA, "graph-left");
         drawGraph(graphB, "graph-right");
-    
+
         instructionsEl.innerHTML = 'With your gut feelings, which one looks more like a social network to you?<br>Press <strong>F</strong> if you prefer the <strong>left</strong> graph, <strong>J</strong> for the <strong>right</strong> graph.';
         instructionsEl.style.color = 'black';
-    }    
+    }
+
     document.getElementById("warning").style.display = "none";
     document.getElementById("graph-container").style.display = "flex";
 
     const trialStart = performance.now();
     let responded = false;
-    
+
     const keyListener = (e) => {
         if (responded) return;
-        if  ((trial.type === "probe" && e.key === "p"||(e.key === "f" || e.key === "j")) ||
-        (trial.type === "graph" && (e.key === "f" || e.key === "j"))){
-            if (trial.type === "probe"){
-                responded = true;
-                const rt = performance.now() - trialStart;
-        
+        if ((trial.type === "probe" &&(e.key === "p" ||e.key === "f" || e.key === "j")) || (trial.type === "graph" && (e.key === "f" || e.key === "j"))) {
+            responded = true;
+            const rt = performance.now() - trialStart;
+
+            if (trial.type === "probe") {
                 trialData.push({
                     id,
                     trial: currentIndex,
@@ -188,62 +255,54 @@ function runTrial() {
                     node_count_a: [],
                     block_b: [],
                     node_count_b: [],
-                    graphA:[],
+                    graphA: [],
                     graphB: [],
                     pc1_A: [],
                     pc2_A: [],
                     pc1_B: [],
                     pc2_B: [],
-                    posA:[],
-                    posB:[]
+                    posA: [],
+                    posB: []
                 });
-            if (rt < 100) {
-                fastCount++;
             } else {
-                fastCount = 0;
-            }
-        }else if (trial.type === "graph"){
-            responded = true;
-            const rt = performance.now() - trialStart;
-            const[indexA, indexB] = pairs[graphIndex];;
-            const metaA = graphMetadata[indexA];
-            const metaB = graphMetadata[indexB];
-            const graphA = aGraphs[indexA];
-            const graphB = bGraphs[indexB];
-    
-            // Later, during logging:
-            const posA = JSON.parse(document.getElementById("graph-left").dataset.positions || "{}");
-            const posB = JSON.parse(document.getElementById("graph-right").dataset.positions || "{}");
+                const [indexA, indexB] = pairs[graphIndex];
+                const metaA = graphMetadata[indexA];
+                const metaB = graphMetadata[indexB];
+                const graphA = aGraphs[indexA];
+                const graphB = bGraphs[indexB];
+                const posA = JSON.parse(document.getElementById("graph-left").dataset.positions || "{}");
+                const posB = JSON.parse(document.getElementById("graph-right").dataset.positions || "{}");
 
-            trialData.push({
-                id,
-                trial: currentIndex,
-                type: trial.type,
-                rt: Math.round(rt),
-                choice: e.key,
-                block_a: metaA.block_id,
-                node_count_a: metaA.node_count,
-                block_b: metaB.block_id,
-                node_count_b: metaB.node_count,
-                graphA: graphA,
-                graphB: graphB,
-                pc1_A: metaA.pc_one,
-                pc2_A: metaA.pc_two,
-                pc1_B: metaB.pc_one,
-                pc2_B: metaB.pc_two,
-                posA: formatPositionsForCSV(posA),
-                posB: formatPositionsForCSV(posB)
-            });
-            graphIndex++;
+                trialData.push({
+                    id,
+                    trial: currentIndex,
+                    type: trial.type,
+                    rt: Math.round(rt),
+                    choice: e.key,
+                    block_a: metaA.block_id,
+                    node_count_a: metaA.node_count,
+                    block_b: metaB.block_id,
+                    node_count_b: metaB.node_count,
+                    graphA: graphA,
+                    graphB: graphB,
+                    pc1_A: metaA.pc_one,
+                    pc2_A: metaA.pc_two,
+                    pc1_B: metaB.pc_one,
+                    pc2_B: metaB.pc_two,
+                    posA: formatPositionsForCSV(posA),
+                    posB: formatPositionsForCSV(posB)
+                });
+                graphIndex++;
+            }
+
             if (rt < 100) {
                 fastCount++;
             } else {
                 fastCount = 0;
             }
-        }
+
             document.removeEventListener("keydown", keyListener);
             if (fastCount >= 3) {
-                // Hide graphs, show countdown
                 document.getElementById("graph-container").style.display = "none";
                 let warningElement = document.getElementById("warning");
                 let timeLeft = 10;
@@ -275,7 +334,7 @@ function runTrial() {
 
     setTimeout(() => {
         if (!responded) {
-            if(trial.type === "probe"){
+            if (trial.type === "probe") {
                 trialData.push({
                     id,
                     trial: currentIndex,
@@ -284,10 +343,10 @@ function runTrial() {
                     choice: "none",
                     block_a: [],
                     node_count_a: [],
-                    block_b:[],
-                    node_count_b:[],
+                    block_b: [],
+                    node_count_b: [],
                     graphA: [],
-                    graphB:[],
+                    graphB: [],
                     pc1_A: [],
                     pc2_A: [],
                     pc1_B: [],
@@ -295,16 +354,14 @@ function runTrial() {
                     posA: [],
                     posB: []
                 });
-        
-                document.removeEventListener("keydown", keyListener);
-                currentIndex++;
-                runTrial();
-            }else if( trial.type === "graph"){
-                const[indexA, indexB] = pairs[graphIndex];;
+            } else {
+                const [indexA, indexB] = pairs[graphIndex];
                 const metaA = graphMetadata[indexA];
                 const metaB = graphMetadata[indexB];
                 const graphA = aGraphs[indexA];
                 const graphB = bGraphs[indexB];
+                const posA = JSON.parse(document.getElementById("graph-left").dataset.positions || "{}");
+                const posB = JSON.parse(document.getElementById("graph-right").dataset.positions || "{}");
 
                 trialData.push({
                     id,
@@ -326,14 +383,15 @@ function runTrial() {
                     posB: formatPositionsForCSV(posB)
                 });
                 graphIndex++;
-                document.removeEventListener("keydown", keyListener);
-                currentIndex++;
-                runTrial();
             }
+
+            document.removeEventListener("keydown", keyListener);
+            currentIndex++;
+            runTrial();
         }
-        console.log("timeout")
     }, 10000);
 }
+
 
 function drawGraph(graphStructure, containerId) {
     const elements = [];
@@ -426,20 +484,38 @@ function formatPositionsForCSV(posObj) {
 
 
 
-function saveCSV() {
+async function saveCSV() {
     const header = 'id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc3_A,pc1_B,pc3_B,posA,posB';
     const rows = trialData.map(row => {
-        return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}",${row.pc1_A},${row.pc2_A},${row.pc1_B},${row.pc2_B},"${row.posA}","${row.posB}"`;
+      return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}",${row.pc1_A},${row.pc3_A},${row.pc1_B},${row.pc3_B},"${row.posA}","${row.posB}"`;
     });
-
+  
     const csv = [header, ...rows].join("\n");
-
     const blob = new Blob([csv], { type: "text/csv" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `data_${id}.csv`;
-    link.click();
-}
+  
+    // Use participant id from the first row (fallback to timestamp if missing)
+    const id = trialData[0]?.id || `anon_${Date.now()}`;
+    const filename = `data_${id}.csv`;
+  
+    const formData = new FormData();
+    formData.append("file", blob, filename);
+  
+    try {
+      const response = await fetch("https://srnpro.vercel.app/api/upload-runsheet", {
+        method: "POST",
+        body: formData,
+      });
+  
+      if (!response.ok) throw new Error("Upload failed");
+      const result = await response.json();
+      alert("Upload successful!");
+      console.log("Upload response:", result);
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Upload failed: " + err.message);
+    }
+  }
+  
 
 
 
