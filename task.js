@@ -493,7 +493,7 @@ async function saveCSV() {
     const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
   
-    // Use participant id from the first row (fallback to timestamp if missing)
+    // Dynamically set filename from participant ID
     const id = trialData[0]?.id || `anon_${Date.now()}`;
     const filename = `data_${id}.csv`;
   
@@ -501,7 +501,7 @@ async function saveCSV() {
     formData.append("file", blob, filename);
   
     try {
-      const response = await fetch("https://srnpro.vercel.app/api/upload-runsheet", {
+      const response = await fetch(`https://srnpro.vercel.app/api/upload-runsheet?key=${filename}`, {
         method: "POST",
         body: formData,
       });
