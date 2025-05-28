@@ -162,25 +162,38 @@ function startTask(autoStart = false) {
         if (!inputId) return alert("Please enter your ID");
         id = inputId;
 
-        // Optional: redirect with ID in URL
+        // Redirect to include the ID in URL
         window.location.href = `?ParticipantId=${encodeURIComponent(id)}`;
-        return; // Stop here — page will reload with ID
+        return;
     }
 
-    // Request fullscreen
-    const elem = document.documentElement;
-    if (elem.requestFullscreen) {
-        elem.requestFullscreen();
-    } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-    } else if (elem.msRequestFullscreen) {
-        elem.msRequestFullscreen();
-    }
-
+    // Hide initial input and show instructions
     document.getElementById("instruction").style.display = "none";
-    document.getElementById("task").style.display = "block";
-    runTrial();
+    document.getElementById("preTaskInstruction").style.display = "block";
+
+    const listener = (e) => {
+        if (e.code === "Space") {
+            document.removeEventListener("keydown", listener);
+
+            // Request fullscreen
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            } else if (elem.msRequestFullscreen) {
+                elem.msRequestFullscreen();
+            }
+
+            document.getElementById("preTaskInstruction").style.display = "none";
+            document.getElementById("task").style.display = "block";
+            runTrial();
+        }
+    };
+
+    document.addEventListener("keydown", listener);
 }
+
 
 
 
