@@ -136,13 +136,14 @@ window.onload = async () => {
     await loadGraphsFromJSON();
     generateUniquePairs();
 
-    const storedId = localStorage.getItem("participantId");
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramId = urlParams.get("ParticipantId");
 
-    if (storedId) {
-        id = storedId;
+    if (paramId) {
+        id = paramId;
         document.getElementById("instruction").style.display = "none";
         document.getElementById("task").style.display = "block";
-        startTask(true); // pass flag to indicate auto start
+        startTask(true); // autoStart = true
     } else {
         const input = document.getElementById("participantId");
         if (input) input.value = '';  // Optional: clear input
@@ -150,16 +151,20 @@ window.onload = async () => {
 };
 
 
+
 function startTask(autoStart = false) {
     const inputEl = document.getElementById("participantId");
 
     if (autoStart) {
-        id = localStorage.getItem("participantId");
+        // id already set from URL
     } else {
         const inputId = inputEl?.value.trim();
         if (!inputId) return alert("Please enter your ID");
         id = inputId;
-        localStorage.setItem("participantId", id);
+
+        // Optional: redirect with ID in URL
+        window.location.href = `?ParticipantId=${encodeURIComponent(id)}`;
+        return; // Stop here — page will reload with ID
     }
 
     // Request fullscreen
