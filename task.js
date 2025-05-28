@@ -90,12 +90,6 @@ function generateUniquePairs() {
 
 
 
-window.onload = async () => {
-    await loadGraphsFromJSON();
-    generateUniquePairs();
-};
-
-
 ///INIT TASK
 let currentIndex = 0;
 let graphIndex = 0;  // <-- NEW: keeps track of which pair to use

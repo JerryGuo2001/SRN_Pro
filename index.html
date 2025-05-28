@@ -81,7 +81,7 @@
 
     <div id="task" style="display:none;">
         <p id="instructionsText" style="text-align: center;"></p>
-        <div id="graph-container">
+        <div id="graph-container" style="display: none;">
             <div class="graph-box" id="graph-left"></div>
             <div class="graph-box" id="graph-right"></div>
         </div>
@@ -93,15 +93,4 @@
         <p>Your responses have been recorded.</p>
     </div>
 </body>
-<script>
-    window.onload = async function() {
-    await loadGraphsFromCSV();
-    generateUniquePairs();
-
-    // Now you can access:
-    // - aGraphs[i], bGraphs[i]
-    // - pairs[i] = [i, j]
-    // - pairMetadata[i] = { blockA, blockB, nodeCountA, nodeCountB }
-};
-</script>
 </html>
