@@ -132,20 +132,43 @@ while (probeSet.size < totalProbeTrials) {
     }
 }
 
+window.onload = async () => {
+    await loadGraphsFromJSON();
+    generateUniquePairs();
+
+    const storedId = localStorage.getItem("participantId");
+
+    if (storedId) {
+        id = storedId;
+        document.getElementById("instruction").style.display = "none";
+        document.getElementById("task").style.display = "block";
+        startTask(true); // pass flag to indicate auto start
+    } else {
+        const input = document.getElementById("participantId");
+        if (input) input.value = '';  // Optional: clear input
+    }
+};
 
 
-// Function to start the task
-function startTask() {
-    id = document.getElementById("participantId").value.trim();
-    if (!id) return alert("Please enter your ID");
+function startTask(autoStart = false) {
+    const inputEl = document.getElementById("participantId");
 
-    // Try to request fullscreen
+    if (autoStart) {
+        id = localStorage.getItem("participantId");
+    } else {
+        const inputId = inputEl?.value.trim();
+        if (!inputId) return alert("Please enter your ID");
+        id = inputId;
+        localStorage.setItem("participantId", id);
+    }
+
+    // Request fullscreen
     const elem = document.documentElement;
     if (elem.requestFullscreen) {
         elem.requestFullscreen();
-    } else if (elem.webkitRequestFullscreen) { // Safari
+    } else if (elem.webkitRequestFullscreen) {
         elem.webkitRequestFullscreen();
-    } else if (elem.msRequestFullscreen) { // IE11
+    } else if (elem.msRequestFullscreen) {
         elem.msRequestFullscreen();
     }
 
@@ -153,6 +176,7 @@ function startTask() {
     document.getElementById("task").style.display = "block";
     runTrial();
 }
+
 
 
 function showBreakScreen() {
@@ -562,7 +586,7 @@ async function saveCSV() {
   
     // Dynamically set filename from participant ID
     const id = trialData[0]?.id || `anon_${Date.now()}`;
-    const filename = `data_${id}.csv`;
+    const filename = `maindata_${id}.csv`;
   
     const formData = new FormData();
     formData.append("file", blob, filename);
