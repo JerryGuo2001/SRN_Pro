@@ -138,12 +138,23 @@ while (probeSet.size < totalProbeTrials) {
 function startTask() {
     id = document.getElementById("participantId").value.trim();
     if (!id) return alert("Please enter your ID");
+
+    // Try to request fullscreen
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+    } else if (elem.webkitRequestFullscreen) { // Safari
+        elem.webkitRequestFullscreen();
+    } else if (elem.msRequestFullscreen) { // IE11
+        elem.msRequestFullscreen();
+    }
+
     document.getElementById("instruction").style.display = "none";
     document.getElementById("task").style.display = "block";
     runTrial();
 }
 
-//break screen
+
 function showBreakScreen() {
     inBreak = true;
     breakStartTime = performance.now();
@@ -151,54 +162,110 @@ function showBreakScreen() {
     document.getElementById("task").style.display = "none";
     document.getElementById("breakScreen").style.display = "block";
 
-    let timeLeft = 2;
     const countdownDisplay = document.getElementById("breakCountdown");
     const earlyResumeMsg = document.getElementById("earlyResumeMessage");
 
-    earlyResumeMsg.style.display = "none"; // ✅ Hide it at the beginning of every break
-    countdownDisplay.textContent = timeLeft;
+    earlyResumeMsg.style.display = "none";
 
-    const interval = setInterval(() => {
-        timeLeft--;
-        countdownDisplay.textContent = timeLeft;
+    let interval;
+    let awaitingExtension = false;
+    let allowEarlyResume = false;
+    let breakTimerStarted = false;
 
-        if (timeLeft <= 40) {
-            earlyResumeMsg.style.display = "block";
+    document.addEventListener("keydown", handleSpacePress);
+
+    function handleSpacePress(e) {
+        if (e.code === 'Space') {
+            if (awaitingExtension) {
+                clearInterval(interval);
+                earlyResumeMsg.style.display = "none";
+                awaitingExtension = false;
+                startBreak(30); // Extend by 30s
+            } else if (allowEarlyResume) {
+                clearInterval(interval);
+                endBreak(); // Resume early
+            }
         }
+    }
 
-        if (timeLeft <= 0) {
-            clearInterval(interval);
-            endBreak();
-        }
-    }, 1000);
+    function startBreak(duration) {
+        let remaining = duration;
+        awaitingExtension = false;
+        allowEarlyResume = duration === 30; // enable early resume if it's an extension
+        earlyResumeMsg.style.display = "none";
+        countdownDisplay.textContent = `: ${remaining} seconds`;
 
-    const breakKeyListener = (e) => {
-        if (e.key === 'p' && (performance.now() - breakStartTime) > 20000) {
-            clearInterval(interval);
-            endBreak();
-        }
-    };
+        interval = setInterval(() => {
+            remaining--;
+            countdownDisplay.textContent = `: ${remaining} seconds`;
 
-    document.addEventListener("keydown", breakKeyListener);
+            // For initial 60s, enable early resume after 30s have passed
+            if (duration === 60 && remaining === 30) {
+                allowEarlyResume = true;
+                earlyResumeMsg.style.display = "block";
+                earlyResumeMsg.textContent = "You may press SPACE to resume early.";
+            }else if(duration === 30) {
+                allowEarlyResume = true;
+                earlyResumeMsg.style.display = "block";
+                earlyResumeMsg.textContent = "You may press SPACE to resume early.";
+            }
+
+            if (remaining <= 0) {
+                clearInterval(interval);
+                allowEarlyResume = false; // disable early resume during countdown
+                startExtensionCountdown();
+            }
+        }, 1000);
+    }
+
+    function startExtensionCountdown() {
+        let countdown = 5;
+        awaitingExtension = true;
+        earlyResumeMsg.style.display = "block";
+        earlyResumeMsg.textContent = `Break ending in ${countdown}... Press SPACE to continue break.`;
+
+        interval = setInterval(() => {
+            countdown--;
+            earlyResumeMsg.textContent = `Break ending in ${countdown}... Press SPACE to continue break.`;
+
+            if (countdown <= 0) {
+                clearInterval(interval);
+                if (!awaitingExtension) return; // Already extended
+                endBreak(); // No SPACE pressed — resume task
+            }
+        }, 1000);
+    }
 
     function endBreak() {
         inBreak = false;
-        document.removeEventListener("keydown", breakKeyListener);
+        awaitingExtension = false;
+        allowEarlyResume = false;
+        document.removeEventListener("keydown", handleSpacePress);
         document.getElementById("breakScreen").style.display = "none";
         document.getElementById("task").style.display = "block";
         runTrial();
     }
+
+    startBreak(60);
 }
+
+
+
+
+const breakPointsTriggered = new Set();
 
 
 //break time over
 function runTrial() {
     const quarter = Math.floor(totaltrial / 4);
-    if (currentIndex === quarter || currentIndex === quarter * 2 || currentIndex === quarter * 3) {
-        currentIndex++; // advance so break isn't re-triggered
+    const breakPoints = [quarter, quarter * 2, quarter * 3];
+
+    if (breakPoints.includes(currentIndex) && !breakPointsTriggered.has(currentIndex)) {
+        breakPointsTriggered.add(currentIndex); 
         showBreakScreen();
         return;
     }
+
 
     if (currentIndex >= totaltrial) {
         document.getElementById("task").style.display = "none";
@@ -212,7 +279,7 @@ function runTrial() {
     const instructionsEl = document.getElementById("instructionsText");
 
     if (trial.type === "probe") {
-        instructionsEl.innerHTML = 'Press <strong>P</strong> button.';
+        instructionsEl.innerHTML = 'Press <strong>SPACE</strong> button.';
         instructionsEl.style.color = 'red';
 
         const graphA = aGraphs[Math.floor(Math.random() * 30)];
@@ -240,7 +307,7 @@ function runTrial() {
 
     const keyListener = (e) => {
         if (responded) return;
-        if ((trial.type === "probe" &&(e.key === "p" ||e.key === "f" || e.key === "j")) || (trial.type === "graph" && (e.key === "f" || e.key === "j"))) {
+        if ((trial.type === "probe" &&(e.code === "Space" ||e.key === "f" || e.key === "j")) || (trial.type === "graph" && (e.key === "f" || e.key === "j"))) {
             responded = true;
             const rt = performance.now() - trialStart;
 
@@ -250,7 +317,7 @@ function runTrial() {
                     trial: currentIndex,
                     type: trial.type,
                     rt: Math.round(rt),
-                    choice: e.key,
+                    choice: e.code === "Space" ? "SPACE" : e.key,
                     block_a: [],
                     node_count_a: [],
                     block_b: [],
