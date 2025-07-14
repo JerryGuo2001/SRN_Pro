@@ -613,7 +613,7 @@ async function saveCSV() {
       if (!response.ok) throw new Error("Upload failed");
       const result = await response.json();
       console.log("Upload response:", result);
-      window.location.href = `https://jerryguo2001.github.io/Brokerage_Survey/?ParticipantId=${encodeURIComponent(id)}`;
+      window.location.href = `https://jerryguo2001.github.io/Brokerage_Survey/?worker_id=${encodeURIComponent(id)}`;
     } catch (err) {
       console.error("Upload error:", err);
       alert("Upload failed: " + err.message);
