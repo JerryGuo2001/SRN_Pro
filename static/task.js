@@ -131,10 +131,10 @@ window.onload = async () => {
     generateUniquePairs();
 
     const urlParams = new URLSearchParams(window.location.search);
-    const paramId = urlParams.get("ParticipantId");
+    const workerId = urlParams.get("worker_id");  // changed key from "ParticipantId"
 
-    if (paramId) {
-        id = paramId;
+    if (workerId) {
+        id = workerId;  // assuming you have a global `id` variable declared
         document.getElementById("instruction").style.display = "none";
         document.getElementById("task").style.display = "block";
         startTask(true); // autoStart = true
@@ -143,6 +143,7 @@ window.onload = async () => {
         if (input) input.value = '';  // Optional: clear input
     }
 };
+
 
 
 
