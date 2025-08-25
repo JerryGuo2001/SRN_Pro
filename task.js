@@ -7,6 +7,44 @@ let breakStartTime = null;
 let pairs = [];
 let pairMetadata = [];
 
+// --- Choice banner helpers ---
+function ensureChoiceBanner() {
+  let el = document.getElementById('choiceBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'choiceBanner';
+    Object.assign(el.style, {
+      position: 'fixed',
+      left: '50%',
+      bottom: '16px',
+      transform: 'translateX(-50%)',
+      background: 'rgba(0,0,0,0.75)',
+      color: '#fff',
+      padding: '8px 14px',
+      borderRadius: '10px',
+      fontSize: '18px',
+      fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+      zIndex: 9999,
+      display: 'none',
+      pointerEvents: 'none',
+      letterSpacing: '0.25px'
+    });
+    document.body.appendChild(el);
+  }
+}
+function showChoiceBanner(text) {
+  const el = document.getElementById('choiceBanner');
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = 'block';
+}
+function hideChoiceBanner() {
+  const el = document.getElementById('choiceBanner');
+  if (el) el.style.display = 'none';
+}
+
+
+
 async function loadGraphsFromJSON() {
     // Clear old data
     aGraphs = [];
@@ -138,6 +176,7 @@ window.onload = async () => {
         document.getElementById("instruction").style.display = "none";
         document.getElementById("task").style.display = "block";
         startTask(true); // autoStart = true
+        ensureChoiceBanner();
     } else {
         const input = document.getElementById("participantId");
         if (input) input.value = '';  // Optional: clear input
@@ -296,6 +335,7 @@ const breakPointsTriggered = new Set();
 function runTrial() {
     const quarter = Math.floor(totaltrial / 4);
     const breakPoints = [quarter, quarter * 2, quarter * 3];
+    hideChoiceBanner();
 
     if (breakPoints.includes(currentIndex) && !breakPointsTriggered.has(currentIndex)) {
         breakPointsTriggered.add(currentIndex); 
@@ -347,6 +387,24 @@ function runTrial() {
         if ((trial.type === "probe" &&(e.code === "Space" ||e.key === "f" || e.key === "j")) || (trial.type === "graph" && (e.key === "f" || e.key === "j"))) {
             responded = true;
             const rt = performance.now() - trialStart;
+            // --- Show selection text for this trial ---
+                if (trial.type === "probe") {
+                // You allow SPACE, F, or J during probe
+                if (e.code === "Space") {
+                    showChoiceBanner("You pressed SPACE");
+                } else if (e.key === "f" || e.key === "F") {
+                    showChoiceBanner("You pressed F (Left)");
+                } else if (e.key === "j" || e.key === "J") {
+                    showChoiceBanner("You pressed J (Right)");
+                } else {
+                    showChoiceBanner(`You pressed: ${e.key}`);
+                }
+                } else {
+                // Graph choice with F/J = left/right
+                const side = (e.key === "f" || e.key === "F") ? "Left" :
+                            (e.key === "j" || e.key === "J") ? "Right" : e.key;
+                showChoiceBanner(`You chose ${side}`);
+                }
 
             if (trial.type === "probe") {
                 trialData.push({
