@@ -56,20 +56,25 @@
 <body>
     <div id="breakScreen" style="display:none; text-align:center;">
         <h2>Break Time</h2>
-        <p>You may resume in<span id="breakCountdown">60</span> seconds</p>
-        <p id="earlyResumeMessage" style="display:none;">Press <strong>P</strong> to resume early</p>
+        <p>You may resume in<span id="breakCountdown">60</span></p>
+        <p id="earlyResumeMessage" style="display:none;">Press <strong>SPACE</strong> to resume early</p>
     </div>
 
-    <div id="preTaskInstruction" style="display: none; text-align: center;">
-        <h2>Instructions</h2>
-        <p>
-        In the upcoming task, you will compare two graphs and decide which one looks more like a social network.<br><br>
-        Press <strong>F</strong> for the left graph, <strong>J</strong> for the right graph.<br><br>
-        You will see breaks during the task.<br><br>
-        <strong>Press the SPACEBAR to begin.</strong><br><br>
-        The task will enter fullscreen after you press space.
-        </p>
+    <!-- Instruction carousel (replaces the old preTaskInstruction) -->
+    <div id="instructionCarousel" style="display:none; text-align:center;">
+    <h2>Instructions</h2>
+    <div style="display:flex; align-items:center; justify-content:center; gap:16px; margin: 10px 0;">
+        <button id="instrPrev" style="font-size:22px; padding:10px 18px; border-radius:10px; cursor:pointer;">← Previous</button>
+        <img id="instructionImage" alt="Instruction" style="max-width: 900px; max-height: 80vh; border:1px solid #ddd; background:#fff;" />
+        <button id="instrNext" style="font-size:22px; padding:10px 18px; border-radius:10px; cursor:pointer;">Next →</button>
     </div>
+    <div id="instrPager" style="margin:8px 0; font-weight:600;"></div>
+    <button id="instrStart" style="display:none; font-size:24px; padding:12px 24px; border-radius:12px; cursor:pointer; margin-top:8px;">
+        Start Experiment
+    </button>
+    <p style="margin-top:10px; color:#666; font-size:14px;">Use the buttons or arrow keys (←/→). Start appears on the last page.</p>
+    </div>
+
 
     <div id="instruction">
         <h2 style="text-align: center;">Welcome to the experiment</h2>

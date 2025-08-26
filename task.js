@@ -7,6 +7,106 @@ let breakStartTime = null;
 let pairs = [];
 let pairMetadata = [];
 
+// --- Instruction assets config ---
+const INSTR_DIR = 'instructions';  // folder name for PNGs
+const INSTR_MAX = 200;             // hard cap to avoid infinite loops if something is wrong
+
+let instructionPages = [];         // array of discovered image URLs
+let instrIndex = 0;                // current page (0-based)
+
+function preloadInstructionPNGs() {
+  // Probe sequentially: 1.png, 2.png, ... until first 404
+  const tryLoad = (n) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ ok: true, url: `${INSTR_DIR}/${n}.png` });
+    img.onerror = () => resolve({ ok: false });
+    img.src = `${INSTR_DIR}/${n}.png?cachebust=${Date.now()}`; // bypass stale cache on GitHub Pages
+  });
+
+  return (async () => {
+    const found = [];
+    for (let i = 1; i <= INSTR_MAX; i++) {
+      // stop when the first missing index is hit (requires no gaps)
+      const res = await tryLoad(i);
+      if (!res.ok) break;
+      found.push(res.url);
+    }
+    return found;
+  })();
+}
+
+function renderInstructionPage() {
+  const imgEl = document.getElementById('instructionImage');
+  const pagerEl = document.getElementById('instrPager');
+  const prevBtn = document.getElementById('instrPrev');
+  const nextBtn = document.getElementById('instrNext');
+  const startBtn = document.getElementById('instrStart');
+
+  if (!instructionPages.length) {
+    imgEl.alt = 'No instruction images found';
+    pagerEl.textContent = '';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    startBtn.style.display = 'none';
+    return;
+  }
+
+  imgEl.src = instructionPages[instrIndex];
+  pagerEl.textContent = `Page ${instrIndex + 1} of ${instructionPages.length}`;
+
+  // nav button states
+  prevBtn.disabled = (instrIndex === 0);
+  nextBtn.disabled = (instrIndex === instructionPages.length - 1);
+
+  // Start only on the last page
+  startBtn.style.display = (instrIndex === instructionPages.length - 1) ? 'inline-block' : 'none';
+}
+
+function showInstructionCarousel() {
+  document.getElementById('instructionCarousel').style.display = 'block';
+  document.getElementById('task').style.display = 'none';
+  document.getElementById('instruction').style.display = 'none';
+
+  // handlers
+  document.getElementById('instrPrev').onclick = () => {
+    if (instrIndex > 0) { instrIndex--; renderInstructionPage(); }
+  };
+  document.getElementById('instrNext').onclick = () => {
+    if (instrIndex < instructionPages.length - 1) { instrIndex++; renderInstructionPage(); }
+  };
+  document.getElementById('instrStart').onclick = beginExperiment;
+
+  // keyboard arrows
+  document.addEventListener('keydown', instructionKeyHandler);
+  renderInstructionPage();
+}
+
+function hideInstructionCarousel() {
+  document.getElementById('instructionCarousel').style.display = 'none';
+  document.removeEventListener('keydown', instructionKeyHandler);
+}
+
+function instructionKeyHandler(e) {
+  if (e.key === 'ArrowLeft') {
+    if (instrIndex > 0) { instrIndex--; renderInstructionPage(); }
+  } else if (e.key === 'ArrowRight') {
+    if (instrIndex < instructionPages.length - 1) { instrIndex++; renderInstructionPage(); }
+  }
+}
+
+function beginExperiment() {
+  // Request fullscreen then start task
+  const elem = document.documentElement;
+  if (elem.requestFullscreen) elem.requestFullscreen();
+  else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+  else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+
+  hideInstructionCarousel();
+  document.getElementById('task').style.display = 'block';
+  runTrial();
+}
+
+
 // --- Choice banner helpers ---
 function ensureChoiceBanner() {
   let el = document.getElementById('choiceBanner');
@@ -164,40 +264,43 @@ while (probeSet.size < totalProbeTrials) {
     }
 }
 
+
 window.onload = async () => {
-    await loadGraphsFromJSON();
-    generateUniquePairs();
+  await loadGraphsFromJSON();
+  generateUniquePairs();
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const workerId = urlParams.get("worker_id");  // changed key from "ParticipantId"
+  // NEW: preload instruction images
+  instructionPages = await preloadInstructionPNGs();
 
-    if (workerId) {
-        id = workerId;  // assuming you have a global `id` variable declared
-        document.getElementById("instruction").style.display = "none";
-        document.getElementById("task").style.display = "block";
-        startTask(true); // autoStart = true
-        ensureChoiceBanner();
-    } else {
-        const input = document.getElementById("participantId");
-        if (input) input.value = '';  // Optional: clear input
-    }
+  const urlParams = new URLSearchParams(window.location.search);
+  const workerId = urlParams.get("worker_id");  // keep consistent
+
+  if (workerId) {
+      id = workerId;
+      document.getElementById("instruction").style.display = "none";
+      ensureChoiceBanner();
+      // NEW: show instruction carousel (not the old preTaskInstruction)
+      showInstructionCarousel();
+  } else {
+      const input = document.getElementById("participantId");
+      if (input) input.value = '';
+  }
 };
 
 
 
 
-function startTask(autoStart = false) {
-    const inputEl = document.getElementById("participantId");
 
-    if (autoStart) {
-        // id already set from URL
-    } else {
+function startTask(autoStart = false) {
+  const inputEl = document.getElementById("participantId");
+
+    if (!autoStart) {
         const inputId = inputEl?.value.trim();
         if (!inputId) return alert("Please enter your ID");
         id = inputId;
 
-        // Redirect to include the ID in URL
-        window.location.href = `?ParticipantId=${encodeURIComponent(id)}`;
+        // CONSISTENCY: keep using worker_id in URL
+        window.location.href = `?worker_id=${encodeURIComponent(id)}`;
         return;
     }
 
