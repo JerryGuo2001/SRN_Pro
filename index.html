@@ -5,6 +5,12 @@
     <title>Graph Choice Task</title>
     <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
     <script defer src="task.js"></script>
+    <script src="https://unpkg.com/pdfjs-dist@4.5.136/build/pdf.min.js"></script>
+    <script>
+    // PDF.js worker path (required)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@4.5.136/build/pdf.worker.min.js";
+    </script>
+
     <style>
         .graph-box {
             width: 700px;
@@ -60,6 +66,34 @@
         <p id="earlyResumeMessage" style="display:none;">Press <strong>SPACE</strong> to resume early</p>
     </div>
 
+    <!-- Consent viewer -->
+    <div id="consentView" style="display:none; max-width:980px; width:100%;">
+    <h2 style="text-align:center; margin-bottom:10px;">Consent Form</h2>
+
+    <!-- Scrollable PDF container -->
+    <div id="consentScrollWrap"
+        style="height:70vh; overflow:auto; border:1px solid #ddd; background:#fff; padding:8px;">
+        <!-- PDF pages will be rendered here -->
+        <div id="consentPdfContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+
+    <!-- Progress & controls -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+        <div id="consentProgress" style="font-size:14px; color:#444;">Scroll to the end to enable the button.</div>
+        <div style="display:flex; align-items:center; gap:10px;">
+        <label style="font-size:14px; user-select:none;">
+            <input type="checkbox" id="consentCheckbox" disabled>
+            I have read and agree to participate.
+        </label>
+        <button id="consentAgreeBtn"
+                style="font-size:20px; padding:10px 18px; border-radius:10px; cursor:not-allowed; opacity:.5;">
+            I Agree & Continue
+        </button>
+        </div>
+    </div>
+    </div>
+
+    
     <!-- Instruction carousel (replaces the old preTaskInstruction) -->
     <div id="instructionCarousel" style="display:none; text-align:center;">
     <h2>Instructions</h2>
@@ -72,7 +106,7 @@
     <button id="instrStart" style="display:none; font-size:24px; padding:12px 24px; border-radius:12px; cursor:pointer; margin-top:8px;">
         Start Experiment
     </button>
-    <p style="margin-top:10px; color:#666; font-size:14px;">Use the buttons or arrow keys (←/→). Start appears on the last page.</p>
+    <p style="margin-top:10px; color:#666; font-size:14px;">Use the buttons or arrow keys (←/→).</p>
     </div>
 
 

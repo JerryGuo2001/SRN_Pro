@@ -7,6 +7,10 @@ let breakStartTime = null;
 let pairs = [];
 let pairMetadata = [];
 
+// --- Consent config ---
+const CONSENT_PDF_URL = 'consent/consent.pdf'; // put your single PDF here
+let consentScrolledToEnd = false;
+
 // --- Instruction assets config ---
 const INSTR_DIR = 'instructions';  // folder name for PNGs
 const INSTR_MAX = 200;             // hard cap to avoid infinite loops if something is wrong
@@ -105,6 +109,88 @@ function beginExperiment() {
   document.getElementById('task').style.display = 'block';
   runTrial();
 }
+
+async function renderConsentPDF(url, containerId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+
+  const pdf = await pdfjsLib.getDocument(url).promise;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale: 1.5 }); // tweak scale if needed
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+
+    container.appendChild(canvas);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+  }
+}
+
+//Consent Helper//////
+function showConsent() {
+  const view = document.getElementById('consentView');
+  const wrap = document.getElementById('consentScrollWrap');
+  const checkbox = document.getElementById('consentCheckbox');
+  const agreeBtn = document.getElementById('consentAgreeBtn');
+  const progress = document.getElementById('consentProgress');
+
+  // reset UI
+  consentScrolledToEnd = false;
+  checkbox.checked = false;
+  checkbox.disabled = true;
+  agreeBtn.disabled = true;
+  agreeBtn.style.cursor = 'not-allowed';
+  agreeBtn.style.opacity = '.5';
+  progress.textContent = 'Scroll to the end to enable the button.';
+
+  // show consent, hide others
+  view.style.display = 'block';
+  document.getElementById('instructionCarousel')?.style?.display = 'none';
+  document.getElementById('instruction').style.display = 'none';
+  document.getElementById('task').style.display = 'none';
+
+  // render PDF (once per show; safe to call again)
+  renderConsentPDF(CONSENT_PDF_URL, 'consentPdfContainer').then(() => {
+    // when pages are rendered, ensure scroll starts at top
+    wrap.scrollTop = 0;
+  });
+
+  // scroll gate
+  function onScroll() {
+    const atBottom = Math.ceil(wrap.scrollTop + wrap.clientHeight) >= (wrap.scrollHeight - 4);
+    if (atBottom && !consentScrolledToEnd) {
+      consentScrolledToEnd = true;
+      checkbox.disabled = false;
+      progress.textContent = 'You’ve reached the end. Check the box to enable the button.';
+    }
+  }
+  wrap.removeEventListener('scroll', onScroll); // avoid dupes
+  wrap.addEventListener('scroll', onScroll);
+
+  // checkbox gate
+  checkbox.onchange = () => {
+    if (checkbox.checked && consentScrolledToEnd) {
+      agreeBtn.disabled = false;
+      agreeBtn.style.cursor = 'pointer';
+      agreeBtn.style.opacity = '1';
+    } else {
+      agreeBtn.disabled = true;
+      agreeBtn.style.cursor = 'not-allowed';
+      agreeBtn.style.opacity = '.5';
+    }
+  };
+
+  // proceed
+  agreeBtn.onclick = () => {
+    if (agreeBtn.disabled) return;
+    view.style.display = 'none';
+    showInstructionCarousel(); // go to your image-based instruction flow
+  };
+}
+
 
 
 // --- Choice banner helpers ---
@@ -269,23 +355,25 @@ window.onload = async () => {
   await loadGraphsFromJSON();
   generateUniquePairs();
 
-  // NEW: preload instruction images
+  // NEW: preload instruction images (from your prior step)
   instructionPages = await preloadInstructionPNGs();
 
   const urlParams = new URLSearchParams(window.location.search);
-  const workerId = urlParams.get("worker_id");  // keep consistent
+  const workerId = urlParams.get("worker_id");
 
   if (workerId) {
-      id = workerId;
-      document.getElementById("instruction").style.display = "none";
-      ensureChoiceBanner();
-      // NEW: show instruction carousel (not the old preTaskInstruction)
-      showInstructionCarousel();
+    id = workerId;
+    document.getElementById("instruction").style.display = "none";
+    ensureChoiceBanner();
+
+    // NEW: Consent first
+    showConsent();
   } else {
-      const input = document.getElementById("participantId");
-      if (input) input.value = '';
+    const input = document.getElementById("participantId");
+    if (input) input.value = '';
   }
 };
+
 
 
 
