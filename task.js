@@ -148,7 +148,9 @@ function showConsent() {
 
   // show consent, hide others
   view.style.display = 'block';
-  document.getElementById('instructionCarousel')?.style?.display = 'none';
+  const instrEl = document.getElementById('instructionCarousel');
+    if (instrEl) instrEl.style.display = 'none';
+
   document.getElementById('instruction').style.display = 'none';
   document.getElementById('task').style.display = 'none';
 
