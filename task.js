@@ -565,7 +565,7 @@ function runTrial() {
         drawGraph(graphA, "graph-left");
         drawGraph(graphB, "graph-right");
 
-        instructionsEl.innerHTML = 'If you think the left graph resembles the reality more, press <strong>F<strong><br>. Alternatively, if you think the right graph resembles the reality more, press <strong>J<strong>.';
+        instructionsEl.innerHTML = 'If you think the left graph resembles the reality more, press <strong>F<strong>. <br> Alternatively, if you think the right graph resembles the reality more, press <strong>J<strong>.';
         instructionsEl.style.color = 'black';
     }
 
