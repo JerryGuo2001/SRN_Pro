@@ -565,7 +565,7 @@ function runTrial() {
         drawGraph(graphA, "graph-left");
         drawGraph(graphB, "graph-right");
 
-        instructionsEl.innerHTML = 'With your gut feelings, which one looks more like a social network to you?<br>Press <strong>F</strong> if you prefer the <strong>left</strong> graph, <strong>J</strong> for the <strong>right</strong> graph.';
+        instructionsEl.innerHTML = 'If you think the left graph resembles the reality more, press <strong>F<strong><br>. Alternatively, if you think the right graph resembles the reality more, press <strong>J<strong>.';
         instructionsEl.style.color = 'black';
     }
 
