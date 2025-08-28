@@ -749,83 +749,117 @@ function runTrial() {
 
 
 function drawGraph(graphStructure, containerId) {
-    const elements = [];
-    const size = Math.sqrt(graphStructure.length);
-    const localPositions = {}; // Local to this graph render
+  const elements = [];
+  const size = Math.sqrt(graphStructure.length);
 
-    for (let i = 0; i < size; i++) {
-        elements.push({ data: { id: `n${i}` } });
+  for (let i = 0; i < size; i++) {
+    elements.push({ data: { id: `n${i}` } });
+  }
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j < size; j++) {
+      if (graphStructure[i * size + j] === 1) {
+        elements.push({ data: { source: `n${i}`, target: `n${j}` } });
+      }
     }
+  }
 
-    for (let i = 0; i < size; i++) {
-        for (let j = 0; j < size; j++) {
-            if (graphStructure[i * size + j] === 1) {
-                elements.push({ data: { source: `n${i}`, target: `n${j}` } });
-            }
-        }
+  const edgeCount = elements.filter(e => e.data.source && e.data.target).length;
+  const nodeCount = size;
+  const maxEdges = nodeCount * (nodeCount - 1) / 2;
+  const edgeDensity = edgeCount / maxEdges;
+
+  let nodeRepulsion;
+  if (edgeDensity > 1.25) nodeRepulsion = 20000000;
+  else if (edgeDensity > 1) nodeRepulsion = 15000000;
+  else if (edgeDensity > 0.75) nodeRepulsion = 10000000;
+  else if (edgeDensity > 0.5) nodeRepulsion = 750000;
+  else if (edgeDensity > 0.25) nodeRepulsion = 50000;
+  else nodeRepulsion = 2500000;
+
+  const containerEl = document.getElementById(containerId);
+
+  const cy = cytoscape({
+    container: containerEl,
+    elements,
+    style: [
+      { selector: 'node', style: { width: '15px', height: '15px', 'background-color': 'blue' } },
+      { selector: 'edge', style: { 'line-color': 'gray', width: 2 } }
+    ],
+    layout: {
+      name: 'cose',
+      nodeRepulsion,
+      idealEdgeLength: 10,
+      gravity: 0.25,
+      // Disable layout animation so you don't see nodes “flying in”
+      animate: false
+    },
+    // Allow programmatic fit/center to change viewport
+    minZoom: 0.05,
+    maxZoom: 4,
+    zoomingEnabled: true,
+    panningEnabled: true,
+    userZoomingEnabled: false, // users can't zoom
+    userPanningEnabled: false, // users can't pan
+    boxSelectionEnabled: false,
+    autoungrabify: true
+  });
+
+  const PADDING = 20;
+
+  function fitAndCenter() {
+    // Fit all elements inside the viewport with some padding
+    cy.fit(cy.elements(), PADDING);
+
+    // Optional: clamp zoom so we never zoom in past 1.0 automatically
+    if (cy.zoom() > 1) cy.zoom(1);
+
+    // Center the viewport (pan) on the graph’s bounding box center
+    cy.center();
+
+    // If you want to ensure absolutely no overflow, do a sanity check:
+    const bb = cy.elements().boundingBox();
+    const w = cy.width(), h = cy.height();
+    const overflows =
+      bb.x1 < 0 || bb.y1 < 0 || bb.x2 > w || bb.y2 > h;
+    if (overflows) {
+      // Zoom out just a bit more to be safe
+      cy.zoom(cy.zoom() * 0.95);
+      cy.center();
     }
+  }
 
-    const edgeCount = elements.filter(e => e.data.source && e.data.target).length;
-    const nodeCount = size;
-    const maxEdges = nodeCount * (nodeCount - 1) / 2;
-    const edgeDensity = edgeCount / maxEdges;
+  // After layout finishes, just adjust the viewport (don’t move nodes)
+  cy.on('layoutstop', () => {
+    fitAndCenter();
 
-    let nodeRepulsion;
-    if (edgeDensity > 1.25) nodeRepulsion = 20000000;
-    else if (edgeDensity > 1) nodeRepulsion = 15000000;
-    else if (edgeDensity > 0.75) nodeRepulsion = 10000000;
-    else if (edgeDensity > 0.5) nodeRepulsion = 750000;
-    else if (edgeDensity > 0.25) nodeRepulsion = 50000;
-    else nodeRepulsion = 2500000;
+    // Store model-space node positions if you need them later
+    const positions = {};
+    cy.nodes().forEach(n => { positions[n.id()] = n.position(); });
 
-    const cy = cytoscape({
-        container: document.getElementById(containerId),
-        elements: elements,
-        style: [
-            { selector: 'node', style: { width: '15px', height: '15px', 'background-color': 'blue' }},
-            { selector: 'edge', style: { 'line-color': 'gray', width: 2 }}
-        ],
-        layout: {
-            name: 'cose',
-            nodeRepulsion: nodeRepulsion,
-            idealEdgeLength: 10,
-            gravity: 0.25,
-            animate: true
-        },
-        zoomingEnabled: false,
-        panningEnabled: false,
-        userZoomingEnabled: false,
-        userPanningEnabled: false,
-        boxSelectionEnabled: false,
-        autoungrabify: true
+    // Optional global assignment if you have that variable elsewhere
+    if (typeof storedPositions !== 'undefined') storedPositions = positions;
+
+    // Store on the canvas for access
+    containerEl.dataset.positions = JSON.stringify(positions);
+  });
+
+  // Re-fit on container resize (use a ResizeObserver for robustness)
+  // This prevents overflow if the canvas size changes.
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      cy.resize();
+      fitAndCenter();
     });
-
-    cy.on('layoutstop', () => {
-        const boundingBox = cy.elements().boundingBox();
-        const centerX = boundingBox.x1 + boundingBox.w / 2;
-        const centerY = boundingBox.y1 + boundingBox.h / 2;
-        const offsetX = cy.width() / 2 - centerX;
-        const offsetY = cy.height() / 2 - centerY;
-
-        cy.nodes().positions((node) => {
-            const pos = node.position();
-            const adjusted = {
-                x: pos.x + offsetX,
-                y: pos.y + offsetY
-            };
-            localPositions[node.id()] = adjusted;
-            return adjusted;
-        });
-
-        // Optional: assign globally if needed
-        storedPositions = localPositions;
-
-        // Store to the canvas itself for access
-        document.getElementById(containerId).dataset.positions = JSON.stringify(localPositions);
+    ro.observe(containerEl);
+  } else {
+    // Fallback
+    window.addEventListener('resize', () => {
+      cy.resize();
+      fitAndCenter();
     });
+  }
 
-    // Return handle to possibly use later (optional)
-    return cy;
+  return cy;
 }
 
 
