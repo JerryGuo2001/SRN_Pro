@@ -7,6 +7,11 @@ let breakStartTime = null;
 let pairs = [];
 let pairMetadata = [];
 
+// Keep live cy refs so we can snapshot exact render state
+let lastCyLeft = null;
+let lastCyRight = null;
+
+
 // ====== Deterministic RNG (so resumes match exact original order) ======
 function mulberry32(seed) {
   return function() {
@@ -748,6 +753,59 @@ function showBreakScreen() {
 
 const breakPointsTriggered = new Set();
 
+//position store
+function snapshotCy(cy) {
+  if (!cy) return { error: "no cy" };
+
+  // Node positions in rendered/model coordinates
+  const nodes = {};
+  cy.nodes().forEach(n => {
+    const p = n.position();               // model coords (layout)
+    const rp = n.renderedPosition();      // pixel coords on canvas
+    nodes[n.id()] = {
+      x: +p.x.toFixed(3),
+      y: +p.y.toFixed(3),
+      rx: +rp.x.toFixed(3),
+      ry: +rp.y.toFixed(3)
+    };
+  });
+
+  // Edge list (source/target by id)
+  const edges = cy.edges().map(e => ({
+    source: e.source().id(),
+    target: e.target().id()
+  }));
+
+  // Viewport + container
+  const view = {
+    zoom: +cy.zoom().toFixed(5),
+    pan: cy.pan(),                        // {x, y}
+    width: cy.width(),
+    height: cy.height()
+  };
+
+  // Try to pull layout options if available
+  let layoutInfo = {};
+  try {
+    const opts = cy._private && cy._private.layout && cy._private.layout.options ? cy._private.layout.options : {};
+    layoutInfo = {
+      name: opts.name || 'unknown',
+      nodeRepulsion: opts.nodeRepulsion ?? null,
+      idealEdgeLength: opts.idealEdgeLength ?? null,
+      gravity: opts.gravity ?? null,
+      animate: opts.animate ?? null
+    };
+  } catch (_) {/* noop */}
+
+  return { nodes, edges, view, layout: layoutInfo, ts: Date.now() };
+}
+
+// Convenience: produce a JSON string ready for CSV
+function snapshotCyForCSV(cy) {
+  return JSON.stringify(snapshotCy(cy));
+}
+
+
 // ===== Trial loop =====
 function runTrial() {
   if (pausedForFullscreen || endedEarly) return;
@@ -780,16 +838,18 @@ function runTrial() {
     const randB = randInt(randPick, bGraphs.length);
     const graphA = aGraphs[randA];
     const graphB = bGraphs[randB];
-    drawGraph(graphA, "graph-left");
-    drawGraph(graphB, "graph-right");
+    lastCyLeft  = drawGraph(graphA, "graph-left");
+    lastCyRight = drawGraph(graphB, "graph-right");
+
 
   } else {
     const pair = pairs[graphIndex];
     const graphA = aGraphs[pair[0]];
     const graphB = bGraphs[pair[1]];
 
-    drawGraph(graphA, "graph-left");
-    drawGraph(graphB, "graph-right");
+    lastCyLeft  = drawGraph(graphA, "graph-left");
+    lastCyRight = drawGraph(graphB, "graph-right");
+
 
     instructionsEl.innerHTML = 'If you think the left graph resembles the reality more, press <strong>F<strong>. <br> Alternatively, if you think the right graph resembles the reality more, press <strong>J<strong>.';
     instructionsEl.style.color = 'black';
@@ -843,8 +903,9 @@ function runTrial() {
           pc2_A: [],
           pc1_B: [],
           pc2_B: [],
-          posA: [],
-          posB: []
+          posA: snapshotCyForCSV(lastCyLeft),
+          posB: snapshotCyForCSV(lastCyRight)
+
         });
       } else {
         const [indexA, indexB] = pairs[graphIndex];
@@ -852,8 +913,6 @@ function runTrial() {
         const metaB = graphMetadata[indexB];
         const graphA = aGraphs[indexA];
         const graphB = bGraphs[indexB];
-        const posA = JSON.parse(document.getElementById("graph-left").dataset.positions || "{}");
-        const posB = JSON.parse(document.getElementById("graph-right").dataset.positions || "{}");
 
         trialData.push({
           id,
@@ -871,8 +930,9 @@ function runTrial() {
           pc2_A: metaA.pc_two,
           pc1_B: metaB.pc_one,
           pc2_B: metaB.pc_two,
-          posA: formatPositionsForCSV(posA),
-          posB: formatPositionsForCSV(posB)
+          posA: snapshotCyForCSV(lastCyLeft),
+          posB: snapshotCyForCSV(lastCyRight)
+
         });
         graphIndex++;
       }
@@ -938,8 +998,9 @@ function runTrial() {
           pc2_A: [],
           pc1_B: [],
           pc2_B: [],
-          posA: [],
-          posB: []
+          posA: snapshotCyForCSV(lastCyLeft),
+          posB: snapshotCyForCSV(lastCyRight)
+
         });
       } else {
         const [indexA, indexB] = pairs[graphIndex];
@@ -947,8 +1008,6 @@ function runTrial() {
         const metaB = graphMetadata[indexB];
         const graphA = aGraphs[indexA];
         const graphB = bGraphs[indexB];
-        const posA = JSON.parse(document.getElementById("graph-left").dataset.positions || "{}");
-        const posB = JSON.parse(document.getElementById("graph-right").dataset.positions || "{}");
 
         trialData.push({
           id,
@@ -966,8 +1025,9 @@ function runTrial() {
           pc2_A: metaA.pc_two,
           pc1_B: metaB.pc_one,
           pc2_B: metaB.pc_two,
-          posA: formatPositionsForCSV(posA),
-          posB: formatPositionsForCSV(posB)
+          posA: snapshotCyForCSV(lastCyLeft),
+          posB: snapshotCyForCSV(lastCyRight)
+
         });
         graphIndex++;
       }
@@ -987,9 +1047,7 @@ function drawGraph(graphStructure, containerId) {
   const elements = [];
   const size = Math.sqrt(graphStructure.length);
 
-  for (let i = 0; i < size; i++) {
-    elements.push({ data: { id: `n${i}` } });
-  }
+  for (let i = 0; i < size; i++) elements.push({ data: { id: `n${i}` } });
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
       if (graphStructure[i * size + j] === 1) {
@@ -1012,6 +1070,12 @@ function drawGraph(graphStructure, containerId) {
   else nodeRepulsion = 2500000;
 
   const containerEl = document.getElementById(containerId);
+
+  // Destroy previous cy for this container (avoid leaks, stale refs)
+  if (containerEl.__cy) {
+    try { containerEl.__cy.destroy(); } catch(_) {}
+    containerEl.__cy = null;
+  }
 
   const cy = cytoscape({
     container: containerEl,
@@ -1054,13 +1118,8 @@ function drawGraph(graphStructure, containerId) {
   }
 
   cy.on('layoutstop', () => {
+    // ensure settled viewport; we’ll snapshot later when logging
     fitAndCenter();
-
-    const positions = {};
-    cy.nodes().forEach(n => { positions[n.id()] = n.position(); });
-
-    if (typeof storedPositions !== 'undefined') storedPositions = positions;
-    containerEl.dataset.positions = JSON.stringify(positions);
   });
 
   if (window.ResizeObserver) {
@@ -1076,8 +1135,11 @@ function drawGraph(graphStructure, containerId) {
     });
   }
 
+  // Keep a handle on the container for later snapshots
+  containerEl.__cy = cy;
   return cy;
 }
+
 
 // ===== CSV save / upload (+ SESSION summary row) =====
 function formatPositionsForCSV(posObj) {
