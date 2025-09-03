@@ -505,7 +505,7 @@ let debugmode = true;
 let totalGraphTrials, totalProbeTrials;
 if (debugmode){
   totalGraphTrials = 20;
-  totalProbeTrials = 20;
+  totalProbeTrials = 5;
   remainingtime_setup=60
 }else{
   totalGraphTrials = 190;
