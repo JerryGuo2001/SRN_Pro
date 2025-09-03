@@ -501,18 +501,15 @@ let graphIndex = 0;
 let fastCount = 0;
 let trialData = [];
 let id = "";
-let remainingtime_setup;
 let debugmode = true;
 
 let totalGraphTrials, totalProbeTrials;
 if (debugmode){
   totalGraphTrials = 20;
   totalProbeTrials = 5;
-  remainingtime_setup = 60;
 }else{
   totalGraphTrials = 190;
   totalProbeTrials = 20;
-  remainingtime_setup = 40;
 }
 
 let totaltrial = totalGraphTrials + totalProbeTrials;
@@ -688,7 +685,7 @@ function showBreakScreen() {
       remaining--;
       countdownDisplay.textContent = `: ${remaining} seconds`;
 
-      if (duration === 60 && remaining === remainingtime_setup) {
+      if (duration === 60 && remaining === 58) {
         allowEarlyResume = true;
         earlyResumeMsg.style.display = "block";
         earlyResumeMsg.textContent = "You may press SPACE to resume early.";
