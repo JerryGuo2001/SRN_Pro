@@ -850,7 +850,7 @@ function runTrial() {
     lastCyLeft  = drawGraph(graphA, "graph-left");
     lastCyRight = drawGraph(graphB, "graph-right");
 
-    instructionsEl.innerHTML = 'If you think the left graph is more likely to come from the real-world friendship data, press <strong>F<strong>. <br> Alternatively, if you think the right graph is more likely to come from the real-world friendship data., press <strong>J<strong>.';
+    instructionsEl.innerHTML = 'If you think the left graph is more likely to come from the real-world friendship data, press <strong>F</strong>. <br> Alternatively, if you think the right graph is more likely to come from the real-world friendship data., press <strong>J</strong>.';
     instructionsEl.style.color = 'black';
   }
 
