@@ -499,16 +499,18 @@ let graphIndex = 0;
 let fastCount = 0;
 let trialData = [];
 let id = "";
-
+let remainingtime_setup
 let debugmode = true;
 
 let totalGraphTrials, totalProbeTrials;
 if (debugmode){
   totalGraphTrials = 20;
   totalProbeTrials = 20;
+  remainingtime_setup=60
 }else{
   totalGraphTrials = 190;
   totalProbeTrials = 20;
+  remainingtime_setup=40
 }
 
 let totaltrial = totalGraphTrials + totalProbeTrials;
@@ -516,18 +518,21 @@ let totaltrial = totalGraphTrials + totalProbeTrials;
 let trialSequence = []; // will be filled by buildTrialSequence()
 
 function buildTrialSequence() {
-  trialSequence = Array.from({ length: totaltrial }, (_, i) => ({
-    type: "graph",
-    index: i
-  }));
-  // deterministically assign probes
-  const slots = Array.from({length: totaltrial}, (_,i)=>i);
+  // totaltrial already = totalGraphTrials + totalProbeTrials
+  // Clamp probe count to [0, totaltrial]
+  totalProbeTrials = Math.max(0, Math.min(totalProbeTrials, totaltrial));
+
+  // Start all as graph trials
+  trialSequence = Array.from({ length: totaltrial }, () => ({ type: "graph" }));
+
+  // Choose probe slots deterministically
+  const slots = Array.from({ length: totaltrial }, (_, i) => i);
   shuffleInPlaceDeterministic(slots, randProbes);
-  const chosen = new Set(slots.slice(0, totalProbeTrials));
-  for (let i = 0; i < totaltrial; i++) {
-    if (chosen.has(i)) trialSequence[i] = { type: "probe" };
+  for (let k = 0; k < totalProbeTrials; k++) {
+    trialSequence[slots[k]] = { type: "probe" };
   }
 }
+
 
 function reconstructIndicesFromLoadedRows() {
   // currentIndex: number of total trials already recorded (graph + probe), excluding SESSION rows
@@ -612,6 +617,9 @@ window.onload = async () => {
     instructionPages = await preloadInstructionPNGs();
     document.getElementById("instruction").style.display = "none";
     showConsent();
+    if (elem.requestFullscreen) elem.requestFullscreen();
+    else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+    else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
     return;
   }
 
@@ -702,7 +710,7 @@ function showBreakScreen() {
       remaining--;
       countdownDisplay.textContent = `: ${remaining} seconds`;
 
-      if (duration === 60 && remaining === 50) {
+      if (duration === 60 && remaining === remainingtime_setup) {
         allowEarlyResume = true;
         earlyResumeMsg.style.display = "block";
         earlyResumeMsg.textContent = "You may press SPACE to resume early.";
@@ -810,8 +818,11 @@ function snapshotCyForCSV(cy) {
 function runTrial() {
   if (pausedForFullscreen || endedEarly) return;
 
+  // In runTrial(), replace the breakPoints lines with:
   const quarter = Math.floor(totaltrial / 4);
-  const breakPoints = [quarter, quarter * 2, quarter * 3];
+  const breakPoints = [quarter, quarter * 2, quarter * 3]
+    .filter(i => i > 0 && i < totaltrial);
+
   hideChoiceBanner();
 
   if (breakPoints.includes(currentIndex) && !breakPointsTriggered.has(currentIndex)) {
@@ -821,6 +832,13 @@ function runTrial() {
   }
 
   if (currentIndex >= totaltrial) {
+    document.getElementById("task").style.display = "none";
+    document.getElementById("thanks").style.display = "block";
+    saveCSV();
+    return;
+  }
+  if (graphIndex >= pairs.length) {
+    // No more unique pairs available; end cleanly.
     document.getElementById("task").style.display = "none";
     document.getElementById("thanks").style.display = "block";
     saveCSV();

@@ -3,18 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <title>Graph Choice Task</title>
-    <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
-    <script defer src="task.js"></script>
-    <script src="https://unpkg.com/pdfjs-dist@4.5.136/build/pdf.min.js"></script>
-    <!-- PDF.js (stable UMD build) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
-    // Expose the library and worker path
     window.pdfjsLib = window['pdfjs-dist/build/pdf'];
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     </script>
 
+    <script defer src="task.js"></script>
 
     <style>
     html, body {
