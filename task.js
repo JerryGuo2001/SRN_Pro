@@ -1,3 +1,6 @@
+// task.js (updated)
+
+// ======================= GLOBALS =======================
 let aGraphs = [];
 let bGraphs = [];
 let graphMetadata = [];
@@ -10,7 +13,6 @@ let pairMetadata = [];
 // Keep live cy refs so we can snapshot exact render state
 let lastCyLeft = null;
 let lastCyRight = null;
-
 
 // ====== Deterministic RNG (so resumes match exact original order) ======
 function mulberry32(seed) {
@@ -195,7 +197,7 @@ function endExperimentEarly() {
     currentTimeoutId = null;
   }
 
-  saveCSV(); // uploads + redirects
+  saveCSV(); // uploads only; NO redirect on ended_early
 }
 
 function attachFullscreenGuards() {
@@ -499,18 +501,18 @@ let graphIndex = 0;
 let fastCount = 0;
 let trialData = [];
 let id = "";
-let remainingtime_setup
+let remainingtime_setup;
 let debugmode = true;
 
 let totalGraphTrials, totalProbeTrials;
 if (debugmode){
   totalGraphTrials = 20;
   totalProbeTrials = 5;
-  remainingtime_setup=60
+  remainingtime_setup = 60;
 }else{
   totalGraphTrials = 190;
   totalProbeTrials = 20;
-  remainingtime_setup=40
+  remainingtime_setup = 40;
 }
 
 let totaltrial = totalGraphTrials + totalProbeTrials;
@@ -518,14 +520,8 @@ let totaltrial = totalGraphTrials + totalProbeTrials;
 let trialSequence = []; // will be filled by buildTrialSequence()
 
 function buildTrialSequence() {
-  // totaltrial already = totalGraphTrials + totalProbeTrials
-  // Clamp probe count to [0, totaltrial]
   totalProbeTrials = Math.max(0, Math.min(totalProbeTrials, totaltrial));
-
-  // Start all as graph trials
   trialSequence = Array.from({ length: totaltrial }, () => ({ type: "graph" }));
-
-  // Choose probe slots deterministically
   const slots = Array.from({ length: totaltrial }, (_, i) => i);
   shuffleInPlaceDeterministic(slots, randProbes);
   for (let k = 0; k < totalProbeTrials; k++) {
@@ -533,19 +529,14 @@ function buildTrialSequence() {
   }
 }
 
-
 function reconstructIndicesFromLoadedRows() {
-  // currentIndex: number of total trials already recorded (graph + probe), excluding SESSION rows
   const nonSessionRows = trialData.filter(r => r && r.type && r.type !== 'SESSION');
   currentIndex = nonSessionRows.length;
-
-  // graphIndex: number of *graph* rows already recorded
   const graphRows = nonSessionRows.filter(r => r.type === 'graph');
   graphIndex = graphRows.length;
 }
 
 function integrateResumeState(summary) {
-  // summary may contain: { status, pairSeed, probeSeed, fullscreenViolations, endedEarly, currentIndex, graphIndex }
   if (!summary) {
     reconstructIndicesFromLoadedRows();
     return;
@@ -554,7 +545,6 @@ function integrateResumeState(summary) {
     fullscreenViolations = summary.fullscreenViolations;
   }
   if (summary.endedEarly === true) {
-    // Show completed/ended page instead of resuming
     showAlreadyDonePage(summary.status || 'ended_early');
     return 'blocked';
   }
@@ -562,8 +552,6 @@ function integrateResumeState(summary) {
     showAlreadyDonePage('completed');
     return 'blocked';
   }
-
-  // Prefer saved indices if present; otherwise infer
   if (typeof summary.currentIndex === 'number') currentIndex = summary.currentIndex;
   if (typeof summary.graphIndex === 'number')   graphIndex   = summary.graphIndex;
   if (!(typeof summary.currentIndex === 'number') || !(typeof summary.graphIndex === 'number')) {
@@ -586,7 +574,6 @@ function showAlreadyDonePage(status='completed') {
 
 // ===== Start / Onload =====
 window.onload = async () => {
-  // If landing with worker_id in the URL, init seeds immediately
   const urlParams = new URLSearchParams(window.location.search);
   const workerId = urlParams.get("worker_id");
   ensureChoiceBanner();
@@ -595,17 +582,14 @@ window.onload = async () => {
     id = workerId;
     initPRNGsFromId(id);
 
-    // Build deterministic structure
     await loadGraphsFromJSON();
     generateUniquePairs();
     buildTrialSequence();
 
-    // Try to resume (if a previous CSV exists)
-    const resumeResult = await checkAndMaybeResume(id);
-    if (resumeResult === 'blocked') return; // completed/ended — don’t proceed
-
+    // Resume disabled for now
+    const resumeResult = await checkAndMaybeResume(id); // returns 'none'
+    if (resumeResult === 'blocked') return;
     if (resumeResult === 'resume') {
-      // Skip consent/instructions; go straight in
       document.getElementById("instruction")?.style && (document.getElementById("instruction").style.display = "none");
       document.getElementById("task").style.display = "block";
       attachFullscreenGuards();
@@ -616,9 +600,6 @@ window.onload = async () => {
     // No prior data -> normal flow
     instructionPages = await preloadInstructionPNGs();
     document.getElementById("instruction").style.display = "none";
-        if (elem.requestFullscreen) elem.requestFullscreen();
-    else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-    else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
     showConsent();
     return;
   }
@@ -637,13 +618,10 @@ function startTask(autoStart = false) {
     const inputId = inputEl?.value.trim();
     if (!inputId) return alert("Please enter your ID");
     id = inputId;
-
-    // Redirect with worker_id; onload will resume/continue as needed
     window.location.href = `?worker_id=${encodeURIComponent(id)}`;
     return;
   }
 
-  // (AutoStart path used by your UI if needed)
   document.getElementById("instruction").style.display = "none";
   document.getElementById("preTaskInstruction").style.display = "block";
 
@@ -761,14 +739,13 @@ function showBreakScreen() {
 
 const breakPointsTriggered = new Set();
 
-//position store
+// ===== Position snapshot helpers =====
 function snapshotCy(cy) {
   if (!cy) return { error: "no cy" };
 
-  // Node positions in rendered/model coordinates
   const nodes = {};
   cy.nodes().forEach(n => {
-    const p = n.position();               // model coords (layout)
+    const p = n.position();               // model coords
     const rp = n.renderedPosition();      // pixel coords on canvas
     nodes[n.id()] = {
       x: +p.x.toFixed(3),
@@ -778,21 +755,18 @@ function snapshotCy(cy) {
     };
   });
 
-  // Edge list (source/target by id)
   const edges = cy.edges().map(e => ({
     source: e.source().id(),
     target: e.target().id()
   }));
 
-  // Viewport + container
   const view = {
     zoom: +cy.zoom().toFixed(5),
-    pan: cy.pan(),                        // {x, y}
+    pan: cy.pan(),
     width: cy.width(),
     height: cy.height()
   };
 
-  // Try to pull layout options if available
   let layoutInfo = {};
   try {
     const opts = cy._private && cy._private.layout && cy._private.layout.options ? cy._private.layout.options : {};
@@ -808,17 +782,30 @@ function snapshotCy(cy) {
   return { nodes, edges, view, layout: layoutInfo, ts: Date.now() };
 }
 
-// Convenience: produce a JSON string ready for CSV
-function snapshotCyForCSV(cy) {
-  return JSON.stringify(snapshotCy(cy));
-}
+// single “box” CSV string for both sides (rendered coords + viewport)
+function positionsCSVForBoth(cyLeft, cyRight) {
+  const a = snapshotCy(cyLeft);
+  const b = snapshotCy(cyRight);
 
+  const fmtNodes = (obj) =>
+    Object.entries(obj.nodes)
+      .map(([id, v]) => `${id}:${v.rx.toFixed(1)},${v.ry.toFixed(1)}`)
+      .join(';');
+
+  const fmtView = (obj) =>
+    `zoom:${obj.view.zoom.toFixed(3)},pan:${Math.round(obj.view.pan.x)},${Math.round(obj.view.pan.y)}`;
+
+  // Example:
+  // A[n0:12.3,45.6;n1:...;...]@zoom:1.000,pan:0,0|B[n0:..., ...]@zoom:1.000,pan:0,0
+  const left = `A[${fmtNodes(a)}]@${fmtView(a)}`;
+  const right = `B[${fmtNodes(b)}]@${fmtView(b)}`;
+  return `${left}|${right}`;
+}
 
 // ===== Trial loop =====
 function runTrial() {
   if (pausedForFullscreen || endedEarly) return;
 
-  // In runTrial(), replace the breakPoints lines with:
   const quarter = Math.floor(totaltrial / 4);
   const breakPoints = [quarter, quarter * 2, quarter * 3]
     .filter(i => i > 0 && i < totaltrial);
@@ -838,7 +825,6 @@ function runTrial() {
     return;
   }
   if (graphIndex >= pairs.length) {
-    // No more unique pairs available; end cleanly.
     document.getElementById("task").style.display = "none";
     document.getElementById("thanks").style.display = "block";
     saveCSV();
@@ -859,7 +845,6 @@ function runTrial() {
     lastCyLeft  = drawGraph(graphA, "graph-left");
     lastCyRight = drawGraph(graphB, "graph-right");
 
-
   } else {
     const pair = pairs[graphIndex];
     const graphA = aGraphs[pair[0]];
@@ -867,7 +852,6 @@ function runTrial() {
 
     lastCyLeft  = drawGraph(graphA, "graph-left");
     lastCyRight = drawGraph(graphB, "graph-right");
-
 
     instructionsEl.innerHTML = 'If you think the left graph resembles the reality more, press <strong>F<strong>. <br> Alternatively, if you think the right graph resembles the reality more, press <strong>J<strong>.';
     instructionsEl.style.color = 'black';
@@ -911,19 +895,17 @@ function runTrial() {
           type: trial.type,
           rt: Math.round(rt),
           choice: e.code === "Space" ? "SPACE" : e.key,
-          block_a: [],
-          node_count_a: [],
-          block_b: [],
-          node_count_b: [],
+          block_a: '',
+          node_count_a: '',
+          block_b: '',
+          node_count_b: '',
           graphA: [],
           graphB: [],
-          pc1_A: [],
-          pc2_A: [],
-          pc1_B: [],
-          pc2_B: [],
-          posA: snapshotCyForCSV(lastCyLeft),
-          posB: snapshotCyForCSV(lastCyRight)
-
+          pc1_A: '',
+          pc2_A: '',
+          pc1_B: '',
+          pc2_B: '',
+          positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
       } else {
         const [indexA, indexB] = pairs[graphIndex];
@@ -948,9 +930,7 @@ function runTrial() {
           pc2_A: metaA.pc_two,
           pc1_B: metaB.pc_one,
           pc2_B: metaB.pc_two,
-          posA: snapshotCyForCSV(lastCyLeft),
-          posB: snapshotCyForCSV(lastCyRight)
-
+          positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
         graphIndex++;
       }
@@ -1006,19 +986,17 @@ function runTrial() {
           type: trial.type,
           rt: "timeout",
           choice: "none",
-          block_a: [],
-          node_count_a: [],
-          block_b: [],
-          node_count_b: [],
+          block_a: '',
+          node_count_a: '',
+          block_b: '',
+          node_count_b: '',
           graphA: [],
           graphB: [],
-          pc1_A: [],
-          pc2_A: [],
-          pc1_B: [],
-          pc2_B: [],
-          posA: snapshotCyForCSV(lastCyLeft),
-          posB: snapshotCyForCSV(lastCyRight)
-
+          pc1_A: '',
+          pc2_A: '',
+          pc1_B: '',
+          pc2_B: '',
+          positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
       } else {
         const [indexA, indexB] = pairs[graphIndex];
@@ -1043,9 +1021,7 @@ function runTrial() {
           pc2_A: metaA.pc_two,
           pc1_B: metaB.pc_one,
           pc2_B: metaB.pc_two,
-          posA: snapshotCyForCSV(lastCyLeft),
-          posB: snapshotCyForCSV(lastCyRight)
-
+          positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
         graphIndex++;
       }
@@ -1136,7 +1112,6 @@ function drawGraph(graphStructure, containerId) {
   }
 
   cy.on('layoutstop', () => {
-    // ensure settled viewport; we’ll snapshot later when logging
     fitAndCenter();
   });
 
@@ -1153,159 +1128,37 @@ function drawGraph(graphStructure, containerId) {
     });
   }
 
-  // Keep a handle on the container for later snapshots
   containerEl.__cy = cy;
   return cy;
 }
 
-
 // ===== CSV save / upload (+ SESSION summary row) =====
-function formatPositionsForCSV(posObj) {
-  return Object.entries(posObj)
-    .map(([key, val]) => `${key}:${val.x.toFixed(1)},${val.y.toFixed(1)}`)
-    .join(';');
-}
-
 function RUNSHEET_KEY(id) { return `maindata_${id}.csv`; }
 function RUNSHEET_GET_URL(key) {
-  // Primary GET endpoint; adjust if your API path differs
   return `https://srnpro.vercel.app/api/runsheet?key=${encodeURIComponent(key)}`;
 }
 function RUNSHEET_GET_URL_FALLBACK(key) {
-  // Some backends support GET on the upload endpoint; harmless to try
   return `https://srnpro.vercel.app/api/upload-runsheet?key=${encodeURIComponent(key)}`;
 }
 
-async function fetchExistingCSV(id) {
-  return null;
-  const key = RUNSHEET_KEY(id);
-  // Try main
-  let res = await fetch(RUNSHEET_GET_URL(key));
-  if (res.ok) return await res.text();
-  // Fallback
-  res = await fetch(RUNSHEET_GET_URL_FALLBACK(key));
-  if (res.ok) return await res.text();
-  return null; // not found
-}
+// Disable CSV GET/resume for now
+async function fetchExistingCSV(_id) { return null; }
+async function checkAndMaybeResume(_id) { return 'none'; }
 
-function parseCSVTextToRows(text) {
-  // very simple CSV parser for our rows; assumes no embedded commas except in the quoted JSON arrays (we extracted as strings)
-  // We’ll split lines, then split by commas but respecting simple quotes. For robustness, use a real CSV parser if you prefer.
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (!lines.length) return { header: [], rows: [] };
-  const header = lines[0].split(',');
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    // naive: split only first 16 commas for our known 17 columns
-    // columns: id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc2_A,pc1_B,pc2_B,posA,posB
-    const parts = [];
-    let cur = '';
-    let inQuotes = false;
-    for (let ch of line) {
-      if (ch === '"') { inQuotes = !inQuotes; cur += ch; continue; }
-      if (ch === ',' && !inQuotes) { parts.push(cur); cur = ''; continue; }
-      cur += ch;
-    }
-    parts.push(cur);
-
-    // Build object
-    const obj = {};
-    header.forEach((h, idx) => obj[h] = parts[idx] ?? '');
-    rows.push(obj);
-  }
-  return { header, rows };
-}
-
-function tryExtractSessionSummary(rows) {
-  // Find last row with type == 'SESSION' and parse posB as JSON
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const r = rows[i];
-    if ((r.type || '').toUpperCase() === 'SESSION') {
-      try {
-        const payload = JSON.parse(r.posB || '{}');
-        return payload;
-      } catch (e) {
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-function loadTrialsFromRows(rows) {
-  const trials = [];
-  for (const r of rows) {
-    if ((r.type || '').toUpperCase() === 'SESSION') continue;
-    const coerce = (v) => (v === '' || v === undefined) ? [] : JSON.parse(v);
-    trials.push({
-      id: r.id,
-      trial: (r.trial === '' ? null : (isNaN(+r.trial) ? r.trial : +r.trial)),
-      type: r.type,
-      rt: (r.rt === 'timeout' ? 'timeout' : (isNaN(+r.rt) ? r.rt : +r.rt)),
-      choice: r.choice,
-      block_a: r.block_a,
-      node_count_a: (r.node_count_a === '' ? '' : +r.node_count_a),
-      block_b: r.block_b,
-      node_count_b: (r.node_count_b === '' ? '' : +r.node_count_b),
-      graphA: coerce(r.graphA),
-      graphB: coerce(r.graphB),
-      pc1_A: (r.pc1_A === '' ? '' : +r.pc1_A),
-      pc2_A: (r.pc2_A === '' ? '' : +r.pc2_A),
-      pc1_B: (r.pc1_B === '' ? '' : +r.pc1_B),
-      pc2_B: (r.pc2_B === '' ? '' : +r.pc2_B),
-      posA: r.posA,
-      posB: r.posB
-    });
-  }
-  return trials;
-}
-
-async function checkAndMaybeResume(id) {
-  return null;
-  try {
-    const text = await fetchExistingCSV(id);
-    if (!text) return 'none';
-
-    const { header, rows } = parseCSVTextToRows(text);
-    if (!rows.length) return 'none';
-
-    const summary = tryExtractSessionSummary(rows);
-    // Important: seeds must match original
-    if (summary && typeof summary.pairSeed === 'number' && typeof summary.probeSeed === 'number' && typeof summary.pickSeed === 'number') {
-      PAIR_SEED = summary.pairSeed;
-      PROBE_SEED = summary.probeSeed;
-      PICK_SEED  = summary.pickSeed;
-      randPairs  = mulberry32(PAIR_SEED);
-      randProbes = mulberry32(PROBE_SEED);
-      randPick   = mulberry32(PICK_SEED);
-      // Rebuild deterministic structures with those seeds
-      aGraphs = []; bGraphs = []; graphMetadata = [];
-      await loadGraphsFromJSON();
-      pairs = []; pairMetadata = [];
-      generateUniquePairs();
-      buildTrialSequence();
-    }
-
-    // Load previous rows into memory so final upload contains full history
-    trialData = loadTrialsFromRows(rows);
-    const mode = integrateResumeState(summary);
-    return mode || 'resume';
-  } catch (e) {
-    console.warn('Resume check failed:', e);
-    return 'none';
-  }
-}
-
+// Export header now uses a single "positions" field (no posA/posB)
 async function saveCSV() {
-  const header = 'id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc2_A,pc1_B,pc2_B,posA,posB';
+  const status =
+    endedEarly ? 'ended_early' :
+    (currentIndex >= totaltrial ? 'completed' : 'partial');
+
+  const header = 'id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc2_A,pc1_B,pc2_B,positions';
   const rows = trialData.map(row => {
-    return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}",${row.pc1_A},${row.pc2_A},${row.pc1_B},${row.pc2_B},"${row.posA}","${row.posB}"`;
+    return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}",${row.pc1_A},${row.pc2_A},${row.pc1_B},${row.pc2_B},"${row.positions}"`;
   });
 
-  // Append SESSION summary row (JSON in posB)
+  // Append SESSION summary row (JSON in positions)
   const sessionPayload = {
-    status: endedEarly ? 'ended_early' : (currentIndex >= totaltrial ? 'completed' : 'partial'),
+    status,
     pairSeed: PAIR_SEED,
     probeSeed: PROBE_SEED,
     pickSeed: PICK_SEED,
@@ -1315,14 +1168,13 @@ async function saveCSV() {
     graphIndex,
     timestamp: Date.now()
   };
-  const sessionRow = `${id},${currentIndex},SESSION,,"",,,,,,,,,,,"",${JSON.stringify(sessionPayload)}`;
+  const sessionRow = `${id},${currentIndex},SESSION,,"",,,,,,,,,"",${JSON.stringify(sessionPayload).replace(/"/g,'""')}`;
   rows.push(sessionRow);
 
   const csv = [header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
 
   const filename = RUNSHEET_KEY(id);
-
   const formData = new FormData();
   formData.append("file", blob, filename);
 
@@ -1335,7 +1187,11 @@ async function saveCSV() {
     if (!response.ok) throw new Error("Upload failed");
     const result = await response.json();
     console.log("Upload response:", result);
-    window.location.href = `https://jerryguo2001.github.io/Brokerage_Survey/?worker_id=${encodeURIComponent(id)}`;
+
+    // Only redirect on COMPLETED; do NOT redirect if ended early
+    if (status === 'completed') {
+      window.location.href = `https://jerryguo2001.github.io/Brokerage_Survey/?worker_id=${encodeURIComponent(id)}`;
+    }
   } catch (err) {
     console.error("Upload error:", err);
     alert("Upload failed: " + err.message);
