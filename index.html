@@ -1,15 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>Graph Choice Task</title>
+
+    <!-- PDF.js UMD (single version) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
-    window.pdfjsLib = window['pdfjs-dist/build/pdf'];
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        window.pdfjsLib = window['pdfjs-dist/build/pdf'];
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     </script>
 
+    <!-- ✅ Cytoscape must load before task.js -->
+    <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+
+    <!-- Your app (deferred) -->
     <script defer src="task.js"></script>
 
     <style>

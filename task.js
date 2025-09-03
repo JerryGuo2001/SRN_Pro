@@ -616,10 +616,10 @@ window.onload = async () => {
     // No prior data -> normal flow
     instructionPages = await preloadInstructionPNGs();
     document.getElementById("instruction").style.display = "none";
-    showConsent();
-    if (elem.requestFullscreen) elem.requestFullscreen();
+        if (elem.requestFullscreen) elem.requestFullscreen();
     else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
     else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+    showConsent();
     return;
   }
 
@@ -1177,6 +1177,7 @@ function RUNSHEET_GET_URL_FALLBACK(key) {
 }
 
 async function fetchExistingCSV(id) {
+  return null;
   const key = RUNSHEET_KEY(id);
   // Try main
   let res = await fetch(RUNSHEET_GET_URL(key));
@@ -1261,6 +1262,7 @@ function loadTrialsFromRows(rows) {
 }
 
 async function checkAndMaybeResume(id) {
+  return null;
   try {
     const text = await fetchExistingCSV(id);
     if (!text) return 'none';
