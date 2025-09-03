@@ -324,14 +324,14 @@ let fastCount = 0;
 let trialData = [];
 let id = "";
 
-let debugmode=false
+let debugmode=true
 
 let totalGraphTrials, totalProbeTrials;
 if (debugmode){
     totalGraphTrials = 20; 
-    totalProbeTrials = 20;
+    totalProbeTrials = 5;
 }else{
-    totalGraphTrials = 528;
+    totalGraphTrials = 190;
     totalProbeTrials = 20;
 }
 
