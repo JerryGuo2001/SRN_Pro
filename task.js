@@ -329,7 +329,7 @@ let debugmode=true
 let totalGraphTrials, totalProbeTrials;
 if (debugmode){
     totalGraphTrials = 20; 
-    totalProbeTrials = 5;
+    totalProbeTrials = 20;
 }else{
     totalGraphTrials = 190;
     totalProbeTrials = 20;
@@ -469,7 +469,7 @@ function showBreakScreen() {
             countdownDisplay.textContent = `: ${remaining} seconds`;
 
             // For initial 60s, enable early resume after 30s have passed
-            if (duration === 60 && remaining === 30) {
+            if (duration === 60 && remaining === 50) {
                 allowEarlyResume = true;
                 earlyResumeMsg.style.display = "block";
                 earlyResumeMsg.textContent = "You may press SPACE to resume early.";
