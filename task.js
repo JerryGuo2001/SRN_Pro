@@ -91,9 +91,12 @@ function ensureFsOverlay() {
   inner.innerHTML = `
     <h2 style="margin:0 0 12px 0;font-size:28px;">Please stay in fullscreen</h2>
     <p id="fsWarningText" style="font-size:18px;line-height:1.5;margin:0 0 16px 0;"></p>
-    <p style="opacity:.85;margin:0 0 16px 0;">Return to fullscreen (e.g., press F11 or allow fullscreen), then press <strong>SPACE</strong> to continue.</p>
+    <p style="opacity:.85;margin:0 0 16px 0;">
+      Press <strong>SPACE</strong> to re-enter fullscreen and resume the task.
+    </p>
     <p style="font-size:14px;opacity:.7;">Leaving fullscreen more than twice will end the experiment.</p>
   `;
+
   el.appendChild(inner);
   document.body.appendChild(el);
   return el;
@@ -132,14 +135,27 @@ function pauseForFullscreenExit() {
 
   showFsOverlay(fullscreenViolations);
 
-  const resumeHandler = (e) => {
+  const resumeHandler = async (e) => {
     if (e.code !== 'Space') return;
-    if (!isFullscreenActive()) return;
+
+    // Try to (re)enter fullscreen on SPACE
+    const elem = document.documentElement;
+    if (!isFullscreenActive()) {
+      try {
+        if (elem.requestFullscreen) await elem.requestFullscreen();
+        else if (elem.webkitRequestFullscreen) await elem.webkitRequestFullscreen();
+        else if (elem.msRequestFullscreen) await elem.msRequestFullscreen();
+      } catch (_) { /* ignore */ }
+    }
+
+    if (!isFullscreenActive()) return; // still not fullscreen -> keep overlay up
+
     document.removeEventListener('keydown', resumeHandler);
     hideFsOverlay();
     pausedForFullscreen = false;
     runTrial(); // re-run same trial
   };
+
   document.addEventListener('keydown', resumeHandler);
 }
 
