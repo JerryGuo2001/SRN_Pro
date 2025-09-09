@@ -60,6 +60,34 @@ function initPRNGsFromId(id) {
 }
 function randInt(randFn, max) { return Math.floor(randFn() * max); }
 
+// ===== Small random graph generator for "size probe" =====
+// Returns a flattened NxN 0/1 adjacency matrix (undirected, no self-loops), connected.
+function makeRandomGraphStructure(n, randFn) {
+  // start with all zeros
+  const A = Array(n*n).fill(0);
+
+  const setEdge = (i, j) => { if (i !== j) { A[i*n + j] = 1; A[j*n + i] = 1; } };
+
+  // ensure connectivity with a simple random spanning chain
+  const order = [...Array(n).keys()];
+  // Fisher-Yates using provided RNG
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(randFn() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  for (let k = 0; k < n - 1; k++) setEdge(order[k], order[k+1]);
+
+  // add a few extra random edges (sparse)
+  const extraEdges = Math.floor(randFn() * Math.max(1, n - 1)); // 0..(n-2)
+  for (let e = 0; e < extraEdges; e++) {
+    const i = Math.floor(randFn() * n);
+    const j = Math.floor(randFn() * n);
+    setEdge(i, j);
+  }
+  return A;
+}
+
+
 // ===== Fullscreen checks =====
 let fullscreenViolations = 0;
 let pausedForFullscreen = false;
@@ -518,13 +546,27 @@ let trialSequence = []; // will be filled by buildTrialSequence()
 
 function buildTrialSequence() {
   totalProbeTrials = Math.max(0, Math.min(totalProbeTrials, totaltrial));
+
+  // Start with all graph trials
   trialSequence = Array.from({ length: totaltrial }, () => ({ type: "graph" }));
+
+  // Pick probe slots deterministically
   const slots = Array.from({ length: totaltrial }, (_, i) => i);
   shuffleInPlaceDeterministic(slots, randProbes);
-  for (let k = 0; k < totalProbeTrials; k++) {
-    trialSequence[slots[k]] = { type: "probe" };
+
+  // Split probe trials roughly half/half between the two types
+  const nSpace  = Math.floor(totalProbeTrials / 2);
+  const nSize   = totalProbeTrials - nSpace;
+
+  // First assign size probes, then space probes (order doesn't matter due to random slots)
+  for (let k = 0; k < nSize; k++) {
+    trialSequence[slots[k]] = { type: "probe_size" };
+  }
+  for (let k = nSize; k < totalProbeTrials; k++) {
+    trialSequence[slots[k]] = { type: "probe_space" };
   }
 }
+
 
 function reconstructIndicesFromLoadedRows() {
   const nonSessionRows = trialData.filter(r => r && r.type && r.type !== 'SESSION');
@@ -831,28 +873,66 @@ function runTrial() {
   const trial = trialSequence[currentIndex];
   const instructionsEl = document.getElementById("instructionsText");
 
-  if (trial.type === "probe") {
-    instructionsEl.innerHTML = 'Press the <strong>SPACE</strong> button.';
-    instructionsEl.style.color = 'red';
+  if (trial.type === "probe_space") {
+  // --- Old probe: press SPACE ---
+  instructionsEl.innerHTML = 'Press the <strong>SPACE</strong> button.';
+  instructionsEl.style.color = 'red';
 
-    const randA = randInt(randPick, aGraphs.length);
-    const randB = randInt(randPick, bGraphs.length);
-    const graphA = aGraphs[randA];
-    const graphB = bGraphs[randB];
-    lastCyLeft  = drawGraph(graphA, "graph-left");
-    lastCyRight = drawGraph(graphB, "graph-right");
+  const randA = randInt(randPick, aGraphs.length);
+  const randB = randInt(randPick, bGraphs.length);
+  const graphA = aGraphs[randA];
+  const graphB = bGraphs[randB];
+  lastCyLeft  = drawGraph(graphA, "graph-left");
+  lastCyRight = drawGraph(graphB, "graph-right");
 
-  } else {
-    const pair = pairs[graphIndex];
-    const graphA = aGraphs[pair[0]];
-    const graphB = bGraphs[pair[1]];
+} else if (trial.type === "probe_size") {
+  // --- New probe: choose the SMALLER node-count graph ---
+  instructionsEl.innerHTML =
+    'Attention check: choose the <strong>graph with fewer nodes</strong>. Press <strong>F</strong> for left, <strong>J</strong> for right.';
+  instructionsEl.style.color = 'red';
 
-    lastCyLeft  = drawGraph(graphA, "graph-left");
-    lastCyRight = drawGraph(graphB, "graph-right");
+  // Pick sizes deterministically
+  const smallChoices = [2, 3];
+  const largeChoices = [4, 5, 6];
 
-    instructionsEl.innerHTML = 'If you think the left graph is more likely to come from the real-world friendship data, press <strong>F</strong>. <br> Alternatively, if you think the right graph is more likely to come from the real-world friendship data., press <strong>J</strong>.';
-    instructionsEl.style.color = 'black';
-  }
+  const smallN = smallChoices[randInt(randPick, smallChoices.length)];
+  const largeN = largeChoices[randInt(randPick, largeChoices.length)];
+
+  // Randomize which side is smaller
+  const smallOnLeft = randPick() < 0.5;
+
+  const leftN  = smallOnLeft ? smallN : largeN;
+  const rightN = smallOnLeft ? largeN : smallN;
+
+  const leftGraph  = makeRandomGraphStructure(leftN,  randPick);
+  const rightGraph = makeRandomGraphStructure(rightN, randPick);
+
+  lastCyLeft  = drawGraph(leftGraph,  "graph-left");
+  lastCyRight = drawGraph(rightGraph, "graph-right");
+
+  // stash per-trial “correct side” info on the trial object so we can save it on response/timeout
+  trial._sizeProbeMeta = {
+    smallN, largeN,
+    smallSide: smallOnLeft ? "Left" : "Right",
+    correctSide: smallOnLeft ? "Left" : "Right",
+    leftN, rightN,
+    leftGraph, rightGraph
+  };
+
+} else {
+  // --- Normal graph choice trial ---
+  const pair = pairs[graphIndex];
+  const graphA = aGraphs[pair[0]];
+  const graphB = bGraphs[pair[1]];
+
+  lastCyLeft  = drawGraph(graphA, "graph-left");
+  lastCyRight = drawGraph(graphB, "graph-right");
+
+  instructionsEl.innerHTML =
+    'If you think the left graph is more likely to come from the real-world friendship data, press <strong>F</strong>. <br> Alternatively, if you think the right graph is more likely to come from the real-world friendship data., press <strong>J</strong>.';
+  instructionsEl.style.color = 'black';
+}
+
 
   document.getElementById("warning").style.display = "none";
   document.getElementById("graph-container").style.display = "flex";
@@ -860,77 +940,119 @@ function runTrial() {
   const trialStart = performance.now();
   let responded = false;
 
-  const keyListener = (e) => {
-    if (responded || pausedForFullscreen || endedEarly) return;
+const keyListener = (e) => {
+  if (responded || pausedForFullscreen || endedEarly) return;
 
-    if ((trial.type === "probe" && (e.code === "Space" || e.key === "f" || e.key === "j")) ||
-        (trial.type === "graph" && (e.key === "f" || e.key === "j"))) {
+  const isFJ = (e.key === "f" || e.key === "F" || e.key === "j" || e.key === "J");
+  const isSpace = (e.code === "Space");
 
-      responded = true;
-      const rt = performance.now() - trialStart;
+  const okForSpaceProbe = (trial.type === "probe_space") && (isSpace || isFJ);
+  const okForSizeProbe  = (trial.type === "probe_size") && isFJ;
+  const okForGraph      = (trial.type === "graph") && isFJ;
 
-      if (trial.type === "probe") {
-        if (e.code === "Space") {
-          showChoiceBanner("You pressed SPACE");
-        } else if (e.key === "f" || e.key === "F") {
-          showChoiceBanner("You pressed F (Left)");
-        } else if (e.key === "j" || e.key === "J") {
-          showChoiceBanner("You pressed J (Right)");
-        } else {
-          showChoiceBanner(`You pressed: ${e.key}`);
-        }
-      } else {
-        const side = (e.key === "f" || e.key === "F") ? "Left" :
-                     (e.key === "j" || e.key === "J") ? "Right" : e.key;
-        showChoiceBanner(`You chose ${side}`);
-      }
+  if (!(okForSpaceProbe || okForSizeProbe || okForGraph)) return;
 
-      if (trial.type === "probe") {
-        trialData.push({
-          id,
-          trial: currentIndex,
-          type: trial.type,
-          rt: Math.round(rt),
-          choice: e.code === "Space" ? "SPACE" : e.key,
-          block_a: '',
-          node_count_a: '',
-          block_b: '',
-          node_count_b: '',
-          graphA: [],
-          graphB: [],
-          pc1_A: '',
-          pc2_A: '',
-          pc1_B: '',
-          pc2_B: '',
-          positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
-        });
-      } else {
-        const [indexA, indexB] = pairs[graphIndex];
-        const metaA = graphMetadata[indexA];
-        const metaB = graphMetadata[indexB];
-        const graphA = aGraphs[indexA];
-        const graphB = bGraphs[indexB];
+  responded = true;
+  const rt = performance.now() - trialStart;
 
-        trialData.push({
-          id,
-          trial: currentIndex,
-          type: trial.type,
-          rt: Math.round(rt),
-          choice: e.key,
-          block_a: metaA.block_id,
-          node_count_a: metaA.node_count,
-          block_b: metaB.block_id,
-          node_count_b: metaB.node_count,
-          graphA: graphA,
-          graphB: graphB,
-          pc1_A: metaA.pc_one,
-          pc2_A: metaA.pc_two,
-          pc1_B: metaB.pc_one,
-          pc2_B: metaB.pc_two,
-          positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
-        });
-        graphIndex++;
-      }
+  // Small toast/bottom banner
+  if (trial.type === "probe_space") {
+    if (isSpace)      showChoiceBanner("You pressed SPACE");
+    else if (e.key.toLowerCase() === "f") showChoiceBanner("You pressed F (Left)");
+    else if (e.key.toLowerCase() === "j") showChoiceBanner("You pressed J (Right)");
+    else showChoiceBanner(`You pressed: ${e.key}`);
+  } else {
+    const side = (e.key.toLowerCase() === "f") ? "Left" : "Right";
+    showChoiceBanner(`You chose ${side}`);
+  }
+
+    // ==== SAVE ROWS ====
+    if (trial.type === "probe_space") {
+      trialData.push({
+        id,
+        trial: currentIndex,
+        type: trial.type,
+        rt: Math.round(rt),
+        choice: isSpace ? "SPACE" : e.key,
+        block_a: '',
+        node_count_a: '',
+        block_b: '',
+        node_count_b: '',
+        graphA: [],
+        graphB: [],
+        pc1_A: '',
+        pc2_A: '',
+        pc1_B: '',
+        pc2_B: '',
+        small_n: '',
+        large_n: '',
+        small_side: '',
+        correct_side: '',
+        is_correct: '',
+        positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
+      });
+
+    } else if (trial.type === "probe_size") {
+      const side = (e.key.toLowerCase() === "f") ? "Left" : "Right";
+      const meta = trial._sizeProbeMeta;
+      const isCorrect = (side === meta.correctSide) ? 1 : 0;
+
+      trialData.push({
+        id,
+        trial: currentIndex,
+        type: trial.type,
+        rt: Math.round(rt),
+        choice: e.key,
+        block_a: '',
+        node_count_a: meta.leftN,
+        block_b: '',
+        node_count_b: meta.rightN,
+        graphA: meta.leftGraph,
+        graphB: meta.rightGraph,
+        pc1_A: '',
+        pc2_A: '',
+        pc1_B: '',
+        pc2_B: '',
+        small_n: meta.smallN,
+        large_n: meta.largeN,
+        small_side: meta.smallSide,
+        correct_side: meta.correctSide,
+        is_correct: isCorrect,
+        positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
+      });
+
+    } else {
+      // normal graph trial (unchanged except we add the new columns as blanks)
+      const [indexA, indexB] = pairs[graphIndex];
+      const metaA = graphMetadata[indexA];
+      const metaB = graphMetadata[indexB];
+      const graphA = aGraphs[indexA];
+      const graphB = bGraphs[indexB];
+
+      trialData.push({
+        id,
+        trial: currentIndex,
+        type: trial.type,
+        rt: Math.round(rt),
+        choice: e.key,
+        block_a: metaA.block_id,
+        node_count_a: metaA.node_count,
+        block_b: metaB.block_id,
+        node_count_b: metaB.node_count,
+        graphA: graphA,
+        graphB: graphB,
+        pc1_A: metaA.pc_one,
+        pc2_A: metaA.pc_two,
+        pc1_B: metaB.pc_one,
+        pc2_B: metaB.pc_two,
+        small_n: '',
+        large_n: '',
+        small_side: '',
+        correct_side: '',
+        is_correct: '',
+        positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
+      });
+      graphIndex++;
 
       if (rt < 100) {
         fastCount++;
@@ -976,26 +1098,30 @@ function runTrial() {
   currentTimeoutId = setTimeout(() => {
     currentTimeoutId = null;
     if (!responded && !pausedForFullscreen && !endedEarly) {
-      if (trial.type === "probe") {
+      if (trial.type === "probe_space") {
+        // same as before, with blanks for size-probe extras
         trialData.push({
-          id,
-          trial: currentIndex,
-          type: trial.type,
-          rt: "timeout",
-          choice: "none",
-          block_a: '',
-          node_count_a: '',
-          block_b: '',
-          node_count_b: '',
-          graphA: [],
-          graphB: [],
-          pc1_A: '',
-          pc2_A: '',
-          pc1_B: '',
-          pc2_B: '',
+          id, trial: currentIndex, type: trial.type, rt: "timeout", choice: "none",
+          block_a: '', node_count_a: '', block_b: '', node_count_b: '',
+          graphA: [], graphB: [], pc1_A: '', pc2_A: '', pc1_B: '', pc2_B: '',
+          small_n: '', large_n: '', small_side: '', correct_side: '', is_correct: '',
           positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
+
+      } else if (trial.type === "probe_size") {
+        const meta = trial._sizeProbeMeta || { smallN:'', largeN:'', smallSide:'', correctSide:'', leftN:'', rightN:'', leftGraph:[], rightGraph:[] };
+        trialData.push({
+          id, trial: currentIndex, type: trial.type, rt: "timeout", choice: "none",
+          block_a: '', node_count_a: meta.leftN, block_b: '', node_count_b: meta.rightN,
+          graphA: meta.leftGraph, graphB: meta.rightGraph,
+          pc1_A: '', pc2_A: '', pc1_B: '', pc2_B: '',
+          small_n: meta.smallN, large_n: meta.largeN,
+          small_side: meta.smallSide, correct_side: meta.correctSide, is_correct: '',
+          positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
+        });
+
       } else {
+        // normal graph timeout (keep existing), but include blanks for new columns
         const [indexA, indexB] = pairs[graphIndex];
         const metaA = graphMetadata[indexA];
         const metaB = graphMetadata[indexB];
@@ -1003,21 +1129,12 @@ function runTrial() {
         const graphB = bGraphs[indexB];
 
         trialData.push({
-          id,
-          trial: currentIndex,
-          type: trial.type,
-          rt: "timeout",
-          choice: "none",
-          block_a: metaA.block_id,
-          node_count_a: metaA.node_count,
-          block_b: metaB.block_id,
-          node_count_b: metaB.node_count,
-          graphA: graphA,
-          graphB: graphB,
-          pc1_A: metaA.pc_one,
-          pc2_A: metaA.pc_two,
-          pc1_B: metaB.pc_one,
-          pc2_B: metaB.pc_two,
+          id, trial: currentIndex, type: trial.type, rt: "timeout", choice: "none",
+          block_a: metaA.block_id, node_count_a: metaA.node_count,
+          block_b: metaB.block_id, node_count_b: metaB.node_count,
+          graphA: graphA, graphB: graphB,
+          pc1_A: metaA.pc_one, pc2_A: metaA.pc_two, pc1_B: metaB.pc_one, pc2_B: metaB.pc_two,
+          small_n: '', large_n: '', small_side: '', correct_side: '', is_correct: '',
           positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
         graphIndex++;
@@ -1030,6 +1147,7 @@ function runTrial() {
       currentIndex++;
       runTrial();
     }
+
   }, 10000);
 }
 
@@ -1148,10 +1266,11 @@ async function saveCSV() {
     endedEarly ? 'ended_early' :
     (currentIndex >= totaltrial ? 'completed' : 'partial');
 
-  const header = 'id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc2_A,pc1_B,pc2_B,positions';
+  const header = 'id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc2_A,pc1_B,pc2_B,small_n,large_n,small_side,correct_side,is_correct,positions';
   const rows = trialData.map(row => {
-    return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}",${row.pc1_A},${row.pc2_A},${row.pc1_B},${row.pc2_B},"${row.positions}"`;
+    return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}",${row.pc1_A},${row.pc2_A},${row.pc1_B},${row.pc2_B},${row.small_n},${row.large_n},${row.small_side},${row.correct_side},${row.is_correct},"${row.positions}"`;
   });
+
 
   // Append SESSION summary row (JSON in positions)
   const sessionPayload = {
@@ -1165,7 +1284,7 @@ async function saveCSV() {
     graphIndex,
     timestamp: Date.now()
   };
-  const sessionRow = `${id},${currentIndex},SESSION,,"",,,,,,,,,"",${JSON.stringify(sessionPayload).replace(/"/g,'""')}`;
+  const sessionRow = `${id},${currentIndex},SESSION,,"",,,,,,,,,"",,,,"","",${JSON.stringify(sessionPayload).replace(/"/g,'""')}`;
   rows.push(sessionRow);
 
   const csv = [header, ...rows].join("\n");
