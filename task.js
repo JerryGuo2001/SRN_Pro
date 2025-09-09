@@ -888,7 +888,7 @@ function runTrial() {
 } else if (trial.type === "probe_size") {
   // --- New probe: choose the SMALLER node-count graph ---
   instructionsEl.innerHTML =
-    'Attention check: choose the <strong>graph with fewer nodes</strong>. Press <strong>F</strong> for left, <strong>J</strong> for right.';
+    'Choose the <strong>graph with fewer nodes</strong>. Press <strong>F</strong> for left, <strong>J</strong> for right.';
   instructionsEl.style.color = 'red';
 
   // Pick sizes deterministically
@@ -1022,7 +1022,7 @@ const keyListener = (e) => {
       });
 
     } else {
-      // normal graph trial (unchanged except we add the new columns as blanks)
+      // normal graph trial
       const [indexA, indexB] = pairs[graphIndex];
       const metaA = graphMetadata[indexA];
       const metaB = graphMetadata[indexB];
@@ -1053,17 +1053,21 @@ const keyListener = (e) => {
         positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
       });
       graphIndex++;
+    }
 
-      if (rt < 100) {
-        fastCount++;
-      } else {
-        fastCount = 0;
-      }
+    // --- shared cleanup (applies to ALL trial types) ---
+    if (currentTimeoutId) { clearTimeout(currentTimeoutId); currentTimeoutId = null; }
+    if (currentKeyListener) {
+      document.removeEventListener("keydown", currentKeyListener);
+      currentKeyListener = null;
+    }
 
-      if (currentKeyListener) {
-        document.removeEventListener("keydown", currentKeyListener);
-        currentKeyListener = null;
-      }
+    // --- advance logic ---
+    // Only the main graph trials use the fast-response penalty.
+    // Probes just advance after 500ms.
+    if (trial.type === "graph") {
+      if (rt < 100) { fastCount++; } else { fastCount = 0; }
+
       if (fastCount >= 3) {
         document.getElementById("graph-container").style.display = "none";
         let warningElement = document.getElementById("warning");
@@ -1089,6 +1093,13 @@ const keyListener = (e) => {
           runTrial();
         }, 500);
       }
+    } else {
+      // probe_space / probe_size
+      fastCount = 0; // keep probes from tripping fast penalty streaks
+      setTimeout(() => {
+        currentIndex++;
+        runTrial();
+      }, 500);
     }
   };
 
