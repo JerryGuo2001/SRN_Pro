@@ -648,7 +648,42 @@ function showAlreadyDonePage(status='completed') {
   root.appendChild(el);
 }
 
-// ===== Start / Onload =====
+async function checkExistingCSV(workerId) {
+  const filename = `maindata_${workerId}.csv`;
+  try {
+    const response = await fetch(
+      `https://srnpro.vercel.app/api/fetch-runsheet?key=${encodeURIComponent(filename)}`
+    );
+
+    if (!response.ok) {
+      // 404 or other errors → treat as no CSV yet
+      return false;
+    }
+
+    const data = await response.json();
+    // If data has rows, assume CSV exists
+    return Array.isArray(data) && data.length > 0;
+  } catch (err) {
+    console.error("Error checking runsheet:", err);
+    return false; // fallback: let them continue
+  }
+}
+
+function showAlreadyEndedPage() {
+  const root = document.getElementById("instruction") || document.body;
+  const el = document.createElement("div");
+  el.style.padding = "24px";
+  el.style.fontFamily = "system-ui,-apple-system,Segoe UI,Roboto,Arial";
+  el.innerHTML = `
+    <h2>Your session has already ended</h2>
+    <p>Our records show you have already completed or ended this task.</p>
+    <p>Please return the study on the platform. Thank you!</p>
+  `;
+  root.innerHTML = "";
+  root.appendChild(el);
+}
+
+// ===== Inside window.onload =====
 window.onload = async () => {
   const urlParams = new URLSearchParams(window.location.search);
   const workerId = urlParams.get("worker_id");
@@ -658,33 +693,30 @@ window.onload = async () => {
     id = workerId;
     initPRNGsFromId(id);
 
+    // ✅ Check if a runsheet already exists
+    const exists = await checkExistingCSV(workerId);
+    if (exists) {
+      showAlreadyEndedPage();
+      return;
+    }
+
+    // Otherwise normal flow
     await loadGraphsFromJSON();
     generateUniquePairs();
     buildTrialSequence();
 
-    // Resume disabled for now
-    const resumeResult = await checkAndMaybeResume(id); // returns 'none'
-    if (resumeResult === 'blocked') return;
-    if (resumeResult === 'resume') {
-      document.getElementById("instruction")?.style && (document.getElementById("instruction").style.display = "none");
-      document.getElementById("task").style.display = "block";
-      attachFullscreenGuards();
-      runTrial();
-      return;
-    }
-
-    // No prior data -> normal flow
     instructionPages = await preloadInstructionPNGs();
     document.getElementById("instruction").style.display = "none";
     showConsent();
     return;
   }
 
-  // If no worker_id in URL yet, load instruction pages but wait for startTask()
+  // No worker_id yet → show ID input
   instructionPages = await preloadInstructionPNGs();
   const input = document.getElementById("participantId");
   if (input) input.value = '';
 };
+
 
 // ===== Start task entry points =====
 function startTask(autoStart = false) {
