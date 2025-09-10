@@ -648,26 +648,22 @@ function showAlreadyDonePage(status='completed') {
   root.appendChild(el);
 }
 
-async function checkExistingCSV(workerId) {
+async function runsheetExists(workerId) {
   const filename = `maindata_${workerId}.csv`;
+  const url = `https://srnpro.vercel.app/api/fetch-runsheet?key=${encodeURIComponent(filename)}&exists=1`;
   try {
-    const response = await fetch(
-      `https://srnpro.vercel.app/api/fetch-runsheet?key=${encodeURIComponent(filename)}`
-    );
-
-    if (!response.ok) {
-      // 404 or other errors → treat as no CSV yet
-      return false;
-    }
-
-    const data = await response.json();
-    // If data has rows, assume CSV exists
-    return Array.isArray(data) && data.length > 0;
-  } catch (err) {
-    console.error("Error checking runsheet:", err);
-    return false; // fallback: let them continue
+    const resp = await fetch(url);
+    if (resp.status === 200) return true;
+    if (resp.status === 404) return false;
+    // For unexpected statuses, assume not found but log it
+    console.warn('Unexpected status checking runsheet:', resp.status);
+    return false;
+  } catch (e) {
+    console.error('Error checking runsheet existence:', e);
+    return false;
   }
 }
+
 
 function showAlreadyEndedPage() {
   const root = document.getElementById("instruction") || document.body;
@@ -693,12 +689,11 @@ window.onload = async () => {
     id = workerId;
     initPRNGsFromId(id);
 
-    // ✅ Check if a runsheet already exists
-    const exists = await checkExistingCSV(workerId);
-    if (exists) {
-      showAlreadyEndedPage();
-      return;
-    }
+  const exists = await runsheetExists(workerId);
+  if (exists) {
+    showAlreadyEndedPage();
+    return;
+  }
 
     // Otherwise normal flow
     await loadGraphsFromJSON();
