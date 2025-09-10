@@ -10,6 +10,13 @@ let breakStartTime = null;
 let pairs = [];
 let pairMetadata = [];
 
+// ===== Graph pools keyed by (block_id,node_count) =====
+let graphPools = {};   // key -> [{ structure:Array<number>, row }]
+let poolOrder = {};    // key -> shuffled index order (deterministic)
+let poolCursor = {};   // key -> next draw position
+let metaList  = [];    // [{ key, block_id, node_count }]
+let allGraphsFlat = []; // for probe_space random display
+
 // Keep live cy refs so we can snapshot exact render state
 let lastCyLeft = null;
 let lastCyRight = null;
@@ -449,41 +456,44 @@ function hideChoiceBanner() {
 
 // ===== Data loading / pairing (deterministic) =====
 async function loadGraphsFromJSON() {
-  aGraphs = [];
-  bGraphs = [];
-  graphMetadata = [];
+  graphPools = {};
+  metaList = [];
+  allGraphsFlat = [];
 
   const response = await fetch('Block_Graph.json');
   const jsonData = await response.json();
 
-  const grouped = {};
+  // Build pools keyed by "block_id_node_count"
   for (const row of jsonData) {
     const key = `${row.block_id}_${row.node_count}`;
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(row);
-  }
 
-  for (const key in grouped) {
-    const graphs = grouped[key];
-    const pickIdx = randInt(randPick, graphs.length); // deterministic pick
-    const randomGraph = graphs[pickIdx];
-
-    const structure = randomGraph.graph_structure
+    const structure = row.graph_structure
       .replace('[', '')
       .replace(']', '')
       .split(',')
       .map(n => parseInt(n.trim(), 10));
 
-    aGraphs.push(structure);
-    bGraphs.push(structure);
-    graphMetadata.push({
-      block_id: randomGraph.block_id,
-      node_count: randomGraph.node_count,
-      pc_one: randomGraph.pc_one,
-      pc_two: randomGraph.pc_two,
-    });
+    if (!graphPools[key]) graphPools[key] = [];
+    graphPools[key].push({ structure, row });
+
+    allGraphsFlat.push(structure);
   }
+
+  // Stable list of unique keys (order doesn’t matter; shuffle later)
+  metaList = Object.keys(graphPools).map(k => {
+    const [block_id, node_count] = k.split('_');
+    return {
+      key: k,
+      block_id: block_id,
+      node_count: parseInt(node_count, 10)
+    };
+  });
+
+  // Reset deterministic per-key orders/cursors
+  poolOrder = {};
+  poolCursor = {};
 }
+
 
 function shuffleInPlaceDeterministic(arr, randFn) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -492,35 +502,62 @@ function shuffleInPlaceDeterministic(arr, randFn) {
   }
 }
 
+
+function ensurePoolOrder(key) {
+  const n = graphPools[key]?.length || 0;
+  if (n === 0) throw new Error(`No graphs available for key ${key}`);
+
+  if (!poolOrder[key] || poolOrder[key].length !== n) {
+    poolOrder[key] = Array.from({ length: n }, (_, i) => i);
+    shuffleInPlaceDeterministic(poolOrder[key], randPick); // deterministic per participant
+    poolCursor[key] = 0;
+  } else if (poolCursor[key] >= n) {
+    // Exhausted this pool; reshuffle deterministically and cycle
+    shuffleInPlaceDeterministic(poolOrder[key], randPick);
+    poolCursor[key] = 0;
+  }
+}
+
+function drawOneFromKey(key) {
+  ensurePoolOrder(key);
+  const idx = poolOrder[key][poolCursor[key]++];
+  return graphPools[key][idx]; // -> { structure, row }
+}
+
+
 function generateUniquePairs() {
   pairs = [];
   pairMetadata = [];
 
-  const n = aGraphs.length;
+  const n = metaList.length;
   const allPairs = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      allPairs.push([i, j]);
+      allPairs.push([i, j]); // indices into metaList
     }
   }
   shuffleInPlaceDeterministic(allPairs, randPairs);
 
   for (const [i, j] of allPairs) {
+    const A = metaList[i];
+    const B = metaList[j];
     pairs.push([i, j]);
     pairMetadata.push({
       indexA: i,
       indexB: j,
-      blockA: graphMetadata[i].block_id,
-      blockB: graphMetadata[j].block_id,
-      nodeCountA: graphMetadata[i].node_count,
-      nodeCountB: graphMetadata[j].node_count,
-      pc1_A: graphMetadata[i].pc_one,
-      pc2_A: graphMetadata[i].pc_two,
-      pc1_B: graphMetadata[j].pc_one,
-      pc2_B: graphMetadata[j].pc_two
+      blockA: A.block_id,
+      blockB: B.block_id,
+      nodeCountA: A.node_count,
+      nodeCountB: B.node_count,
+      // pc fields will be taken from the actual row we draw at runtime
+      pc1_A: '',
+      pc2_A: '',
+      pc1_B: '',
+      pc2_B: ''
     });
   }
 }
+
 
 // ===== Init / trial plan =====
 let currentIndex = 0;
@@ -874,18 +911,17 @@ function runTrial() {
   const instructionsEl = document.getElementById("instructionsText");
 
   if (trial.type === "probe_space") {
-  // --- Old probe: press SPACE ---
-  instructionsEl.innerHTML = 'Press the <strong>SPACE</strong> button.';
-  instructionsEl.style.color = 'red';
+    instructionsEl.innerHTML = 'Press the <strong>SPACE</strong> button.';
+    instructionsEl.style.color = 'red';
 
-  const randA = randInt(randPick, aGraphs.length);
-  const randB = randInt(randPick, bGraphs.length);
-  const graphA = aGraphs[randA];
-  const graphB = bGraphs[randB];
-  lastCyLeft  = drawGraph(graphA, "graph-left");
-  lastCyRight = drawGraph(graphB, "graph-right");
+    // Option A: pick any two graphs from all available structures
+    const L = allGraphsFlat.length;
+    const g1 = allGraphsFlat[randInt(randPick, L)];
+    const g2 = allGraphsFlat[randInt(randPick, L)];
 
-} else if (trial.type === "probe_size") {
+    lastCyLeft  = drawGraph(g1, "graph-left");
+    lastCyRight = drawGraph(g2, "graph-right");
+  } else if (trial.type === "probe_size") {
   // --- New probe: choose the SMALLER node-count graph ---
   instructionsEl.innerHTML =
     'Choose the <strong>graph with fewer nodes</strong>. Press <strong>F</strong> for left, <strong>J</strong> for right.';
@@ -918,20 +954,27 @@ function runTrial() {
     leftN, rightN,
     leftGraph, rightGraph
   };
+ } else {
+    // --- Normal graph choice trial (draw fresh graphs per side) ---
+    const [idxA, idxB] = pairs[graphIndex];
+    const keyA = metaList[idxA].key;
+    const keyB = metaList[idxB].key;
 
-} else {
-  // --- Normal graph choice trial ---
-  const pair = pairs[graphIndex];
-  const graphA = aGraphs[pair[0]];
-  const graphB = bGraphs[pair[1]];
+    const pickA = drawOneFromKey(keyA);
+    const pickB = drawOneFromKey(keyB);
 
-  lastCyLeft  = drawGraph(graphA, "graph-left");
-  lastCyRight = drawGraph(graphB, "graph-right");
+    graphA = pickA.structure;
+    graphB = pickB.structure;
+    metaA  = pickA.row;
+    metaB  = pickB.row;
 
-  instructionsEl.innerHTML =
-    'If you think the left graph is more likely to come from the real-world friendship data, press <strong>F</strong>. <br> Alternatively, if you think the right graph is more likely to come from the real-world friendship data., press <strong>J</strong>.';
-  instructionsEl.style.color = 'black';
-}
+    lastCyLeft  = drawGraph(graphA, "graph-left");
+    lastCyRight = drawGraph(graphB, "graph-right");
+
+    instructionsEl.innerHTML =
+      'If you think the left graph is more likely to come from the real-world friendship data, press <strong>F</strong>. <br> Alternatively, if you think the right graph is more likely to come from the real-world friendship data., press <strong>J</strong>.';
+    instructionsEl.style.color = 'black';
+  }
 
 
   document.getElementById("warning").style.display = "none";
@@ -968,6 +1011,7 @@ const keyListener = (e) => {
 
     // ==== SAVE ROWS ====
     if (trial.type === "probe_space") {
+      const isCorrect = isSpace ? 1 : 0;
       trialData.push({
         id,
         trial: currentIndex,
@@ -988,7 +1032,7 @@ const keyListener = (e) => {
         large_n: '',
         small_side: '',
         correct_side: '',
-        is_correct: '',
+        is_correct: isCorrect,
         positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
       });
 
@@ -1023,12 +1067,6 @@ const keyListener = (e) => {
 
     } else {
       // normal graph trial
-      const [indexA, indexB] = pairs[graphIndex];
-      const metaA = graphMetadata[indexA];
-      const metaB = graphMetadata[indexB];
-      const graphA = aGraphs[indexA];
-      const graphB = bGraphs[indexB];
-
       trialData.push({
         id,
         trial: currentIndex,
@@ -1115,7 +1153,7 @@ const keyListener = (e) => {
           id, trial: currentIndex, type: trial.type, rt: "timeout", choice: "none",
           block_a: '', node_count_a: '', block_b: '', node_count_b: '',
           graphA: [], graphB: [], pc1_A: '', pc2_A: '', pc1_B: '', pc2_B: '',
-          small_n: '', large_n: '', small_side: '', correct_side: '', is_correct: '',
+          small_n: '', large_n: '', small_side: '', correct_side: '', is_correct: 0,
           positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
 
@@ -1127,17 +1165,22 @@ const keyListener = (e) => {
           graphA: meta.leftGraph, graphB: meta.rightGraph,
           pc1_A: '', pc2_A: '', pc1_B: '', pc2_B: '',
           small_n: meta.smallN, large_n: meta.largeN,
-          small_side: meta.smallSide, correct_side: meta.correctSide, is_correct: '',
+          small_side: meta.smallSide, correct_side: meta.correctSide, is_correct: 0,
           positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
 
       } else {
         // normal graph timeout (keep existing), but include blanks for new columns
-        const [indexA, indexB] = pairs[graphIndex];
-        const metaA = graphMetadata[indexA];
-        const metaB = graphMetadata[indexB];
-        const graphA = aGraphs[indexA];
-        const graphB = bGraphs[indexB];
+        const [idxA, idxB] = pairs[graphIndex];
+        const keyA = metaList[idxA].key;
+        const keyB = metaList[idxB].key;
+        const pickA = drawOneFromKey(keyA);
+        const pickB = drawOneFromKey(keyB);
+
+        const metaA = pickA.row;
+        const metaB = pickB.row;
+        const graphA = pickA.structure;
+        const graphB = pickB.structure;
 
         trialData.push({
           id, trial: currentIndex, type: trial.type, rt: "timeout", choice: "none",
