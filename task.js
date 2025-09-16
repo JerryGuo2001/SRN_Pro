@@ -21,6 +21,9 @@ let allGraphsFlat = []; // for probe_space random display
 let lastCyLeft = null;
 let lastCyRight = null;
 
+//skip out warning
+let probeWrongCount = 0;  // increments on incorrect or timeout for probe trials
+let TotalProbeTrialWrongAccepted = 5
 // ====== Deterministic RNG (so resumes match exact original order) ======
 function mulberry32(seed) {
   return function() {
@@ -234,6 +237,51 @@ function endExperimentEarly() {
 
   saveCSV(); // uploads only; NO redirect on ended_early
 }
+
+function endDueToProbeErrors() {
+  endedEarly = true;
+  hideFsOverlay();
+
+  const taskEl = document.getElementById('task');
+  if (taskEl) taskEl.style.display = 'none';
+
+  let term = document.getElementById('terminated');
+  if (!term) {
+    term = document.createElement('div');
+    term.id = 'terminated';
+    term.style.padding = '32px';
+    term.style.fontFamily = 'system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    term.innerHTML = `
+      <h2>Session ended</h2>
+      <p>Your session is ended due to too many missed trials.</p>
+      <p>Please return the study with this code: <strong>RETURN</strong>.</p>
+      <p>Your data so far will be saved.</p>
+    `;
+    document.body.appendChild(term);
+  } else {
+    term.innerHTML = `
+      <h2>Session ended</h2>
+      <p>Your session is ended due to too many missed trials.</p>
+      <p>Please return the study with this code: <strong>RETURN</strong>.</p>
+      <p>Your data so far will be saved.</p>
+    `;
+    term.style.display = 'block';
+  }
+
+  if (currentKeyListener) {
+    document.removeEventListener('keydown', currentKeyListener);
+    currentKeyListener = null;
+  }
+  if (currentTimeoutId) {
+    clearTimeout(currentTimeoutId);
+    currentTimeoutId = null;
+  }
+
+  // Save immediately; DO NOT redirect
+  saveCSV();
+}
+
+
 
 function attachFullscreenGuards() {
   if (attachFullscreenGuards._bound) return;
@@ -1063,6 +1111,17 @@ const keyListener = (e) => {
         positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
       });
 
+      if (!isCorrect) {
+          probeWrongCount++;
+          if (probeWrongCount >= TotalProbeTrialWrongAccepted) {
+            // cleanup listeners/timeouts already done below; just end now
+            if (currentTimeoutId) { clearTimeout(currentTimeoutId); currentTimeoutId = null; }
+            if (currentKeyListener) { document.removeEventListener("keydown", currentKeyListener); currentKeyListener = null; }
+            endDueToProbeErrors();
+            return;
+          }
+        }
+
     } else if (trial.type === "probe_size") {
       const side = (e.key.toLowerCase() === "f") ? "Left" : "Right";
       const meta = trial._sizeProbeMeta;
@@ -1091,6 +1150,16 @@ const keyListener = (e) => {
         is_correct: isCorrect,
         positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
       });
+
+      if (!isCorrect) {
+        probeWrongCount++;
+        if (probeWrongCount >= TotalProbeTrialWrongAccepted) {
+          if (currentTimeoutId) { clearTimeout(currentTimeoutId); currentTimeoutId = null; }
+          if (currentKeyListener) { document.removeEventListener("keydown", currentKeyListener); currentKeyListener = null; }
+          endDueToProbeErrors();
+          return;
+        }
+      }
 
     } else {
       // normal graph trial
@@ -1183,6 +1252,12 @@ const keyListener = (e) => {
           small_n: '', large_n: '', small_side: '', correct_side: '', is_correct: 0,
           positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
+        probeWrongCount++;
+        if (probeWrongCount >= TotalProbeTrialWrongAccepted) {
+          if (currentKeyListener) { document.removeEventListener("keydown", currentKeyListener); currentKeyListener = null; }
+          endDueToProbeErrors();
+          return;
+        }
 
       } else if (trial.type === "probe_size") {
         const meta = trial._sizeProbeMeta || { smallN:'', largeN:'', smallSide:'', correctSide:'', leftN:'', rightN:'', leftGraph:[], rightGraph:[] };
@@ -1195,6 +1270,13 @@ const keyListener = (e) => {
           small_side: meta.smallSide, correct_side: meta.correctSide, is_correct: 0,
           positions: positionsCSVForBoth(lastCyLeft, lastCyRight)
         });
+
+        probeWrongCount++;
+        if (probeWrongCount >= TotalProbeTrialWrongAccepted) {
+          if (currentKeyListener) { document.removeEventListener("keydown", currentKeyListener); currentKeyListener = null; }
+          endDueToProbeErrors();
+          return;
+        }
 
       } else {
         // normal graph timeout (keep existing), but include blanks for new columns
@@ -1344,8 +1426,10 @@ async function checkAndMaybeResume(_id) { return 'none'; }
 // Export header now uses a single "positions" field (no posA/posB)
 async function saveCSV() {
   const status =
-    endedEarly ? 'ended_early' :
-    (currentIndex >= totaltrial ? 'completed' : 'partial');
+    endedEarly
+      ? (probeWrongCount >= 5 ? 'ended_probe_errors' : 'ended_early')
+      : (currentIndex >= totaltrial ? 'completed' : 'partial');
+
 
   const header = 'id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc2_A,pc1_B,pc2_B,small_n,large_n,small_side,correct_side,is_correct,positions';
   const rows = trialData.map(row => {
