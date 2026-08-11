@@ -49,8 +49,11 @@ function cyrb128(str) {
   return [(h1^h2^h3^h4)>>>0, (h2^h1)>>>0, (h3^h1)>>>0, (h4^h1)>>>0];
 }
 function seedFromString(s, salt="") {
-  const [a,b,c,d] = cyrb128(s + "|" + salt);
-  return (a ^ b ^ c ^ d) >>> 0;
+  // cyrb128 already mixes the input into four usable 32-bit words. XORing
+  // all four words cancels to zero because of how those words are derived.
+  // Use one mixed word instead so each participant/salt gets a stable,
+  // participant-specific seed.
+  return cyrb128(s + "|" + salt)[0];
 }
 // Global seeds & PRNGs (set after we know id)
 let PAIR_SEED = 0;
@@ -581,7 +584,9 @@ function generateUniquePairs() {
   const allPairs = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      allPairs.push([i, j]); // indices into metaList
+      // Randomize orientation separately from trial order. Without this flip,
+      // early metaList conditions are always left and later ones always right.
+      allPairs.push(randPairs() < 0.5 ? [i, j] : [j, i]);
     }
   }
   shuffleInPlaceDeterministic(allPairs, randPairs);
@@ -630,6 +635,15 @@ let totaltrial = totalGraphTrials + totalProbeTrials;
 let trialSequence = []; // will be filled by buildTrialSequence()
 
 function buildTrialSequence() {
+  // Never request more graph trials than the generated pair pool contains.
+  if (totalGraphTrials > pairs.length) {
+    console.warn(
+      `Requested ${totalGraphTrials} graph trials, but only ${pairs.length} pairs are available. ` +
+      `Using ${pairs.length} graph trials.`
+    );
+    totalGraphTrials = pairs.length;
+  }
+  totaltrial = totalGraphTrials + totalProbeTrials;
   totalProbeTrials = Math.max(0, Math.min(totalProbeTrials, totaltrial));
 
   // Start with all graph trials
@@ -975,15 +989,17 @@ function runTrial() {
     saveCSV();
     return;
   }
-  if (graphIndex >= pairs.length) {
+  const trial = trialSequence[currentIndex];
+  if (trial.type === "graph" && graphIndex >= pairs.length) {
+    console.error("Trial sequence requested more graph trials than there are graph pairs.");
     document.getElementById("task").style.display = "none";
     document.getElementById("thanks").style.display = "block";
     saveCSV();
     return;
   }
 
-  const trial = trialSequence[currentIndex];
   const instructionsEl = document.getElementById("instructionsText");
+  let activeGraphMeta = null;
 
   if (trial.type === "probe_space") {
     instructionsEl.innerHTML = 'Press the <strong>SPACE</strong> button.';
@@ -1029,22 +1045,23 @@ function runTrial() {
     leftN, rightN,
     leftGraph, rightGraph
   };
- } else {
+  } else {
     // --- Normal graph choice trial (draw fresh graphs per side) ---
-    const [idxA, idxB] = pairs[graphIndex];
-    const keyA = metaList[idxA].key;
-    const keyB = metaList[idxB].key;
+    if (!trial._graphMeta) {
+      const [idxA, idxB] = pairs[graphIndex];
+      const pickA = drawOneFromKey(metaList[idxA].key);
+      const pickB = drawOneFromKey(metaList[idxB].key);
+      trial._graphMeta = {
+        graphA: pickA.structure,
+        graphB: pickB.structure,
+        metaA: pickA.row,
+        metaB: pickB.row
+      };
+    }
+    activeGraphMeta = trial._graphMeta;
 
-    const pickA = drawOneFromKey(keyA);
-    const pickB = drawOneFromKey(keyB);
-
-    graphA = pickA.structure;
-    graphB = pickB.structure;
-    metaA  = pickA.row;
-    metaB  = pickB.row;
-
-    lastCyLeft  = drawGraph(graphA, "graph-left");
-    lastCyRight = drawGraph(graphB, "graph-right");
+    lastCyLeft  = drawGraph(activeGraphMeta.graphA, "graph-left");
+    lastCyRight = drawGraph(activeGraphMeta.graphB, "graph-right");
 
     instructionsEl.innerHTML =
       'If you think the left graph is more likely to come from the real-world friendship data, press <strong>F</strong>. <br> Alternatively, if you think the right graph is more likely to come from the real-world friendship data., press <strong>J</strong>.';
@@ -1163,6 +1180,7 @@ const keyListener = (e) => {
 
     } else {
       // normal graph trial
+      const { graphA, graphB, metaA, metaB } = activeGraphMeta;
       trialData.push({
         id,
         trial: currentIndex,
@@ -1279,17 +1297,9 @@ const keyListener = (e) => {
         }
 
       } else {
-        // normal graph timeout (keep existing), but include blanks for new columns
-        const [idxA, idxB] = pairs[graphIndex];
-        const keyA = metaList[idxA].key;
-        const keyB = metaList[idxB].key;
-        const pickA = drawOneFromKey(keyA);
-        const pickB = drawOneFromKey(keyB);
-
-        const metaA = pickA.row;
-        const metaB = pickB.row;
-        const graphA = pickA.structure;
-        const graphB = pickB.structure;
+        // Save the exact graph pair that was displayed. Drawing again here
+        // would record unseen stimuli and advance the graph pools twice.
+        const { graphA, graphB, metaA, metaB } = activeGraphMeta;
 
         trialData.push({
           id, trial: currentIndex, type: trial.type, rt: "timeout", choice: "none",
